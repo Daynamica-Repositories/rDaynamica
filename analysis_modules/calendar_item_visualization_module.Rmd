@@ -1,0 +1,168 @@
+---
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: F
+    theme: journal
+    code_folding: hide
+params:
+  
+  report_author: NULL
+  report_title: Calendar Item Visualization Report
+  daynamica_data: NULL
+  user_id_list: NULL
+  limit_tod: NULL
+  color_codings: NULL
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+title: `r params$report_title`
+author: `r params$report_author`
+date: `r Sys.Date()`
+
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r, message = F, warning = F}
+library(dplyr)
+library(ggplot2)
+
+source('../helper_functions/s4_temporal_plot.R')
+library(lubridate)
+library(ggnewscale)
+library(wesanderson)
+daynamica_data <- params$daynamica_data
+if(is.null(params$color_codings)){
+
+
+  unique_activity_labels <- 
+    daynamica_data$ucalitems_temporal_plot %>%
+    tibble() %>%
+    filter(type_decoded == "ACTIVITY") %>%
+    pull(subtype_decoded) %>% unique()
+  unique_trip_labels <- 
+    daynamica_data$ucalitems_temporal_plot %>%
+    tibble() %>%
+    filter(type_decoded == "TRIP") %>%
+    pull(subtype_decoded) %>% unique()
+  
+activity_palette <- c(wes_palette("Zissou1", 1),
+                      wes_palette("Zissou1", 5)[4:5],
+                      rev(wes_palette("Royal1", 4)[2:4]),
+                      wes_palette("Moonrise3", 2),
+                      wes_palette("GrandBudapest2"),
+                      wes_palette("GrandBudapest1"),
+                      wes_palette("Chevalier1", 4))[1:length(unique_activity_labels)]
+  
+  
+  trip_palette <- c(palette.colors(n = 8, "ggplot2")[-1],
+                    palette.colors(n = 8, "alphabet"))[1:length(unique_trip_labels)]
+  
+  
+  color_codes_activity_data <- data.frame(labels = unique_activity_labels,
+                                     values = activity_palette)
+  
+  color_codes_trips_data <- data.frame(labels = unique_trip_labels,
+                                  values = trip_palette)
+}else{
+  color_codes_activity_data <- params$color_codings$color_codes_activity_data
+  color_codes_trips_data <- params$color_codings$color_codes_trips_data
+}
+
+if(is.null(params$limit_tod)){
+  min_time = 0
+  max_time = 1
+} else{
+  min_time <- limit_tod[1]
+  max_time <- limit_tod[2]
+}
+```
+
+# Visualization Notes
+
+These plots show 7-day views of the calendar item data collected via the Daynamica app. Each figure starts on a Sunday. For participants who collected data for longer than one week, there will be multiple plots which can be accessed via separate tabs. 
+
+Colors and Category levels can be modified via dataset manipulations and report parameters. See the master_analysis_file.R for further details. 
+
+# User Calendar Item Visualizations {.tabset}
+
+
+
+```{r, results = 'asis', fig.width = 14, fig.height = 10}
+pages <- ceiling(length(user_id_list) /10)
+user_id_list_short <- sub("@[^@]*$", "", user_id_list)
+for(i in 1:pages){
+  if(i != pages){
+    id_index <- (1 + 10*(i-1)):(10 + 10*(i-1))
+  } else{
+    id_index <-(1 + 10*(i-1)):length(user_id_list)
+  }
+  
+  cat("\n\n## Participants: ", min(id_index), "-", max(id_index), " {.tabset} \n")
+  for(j in id_index){
+    cat("\n\n### ", user_id_list_short[j], " {.tabset} \n")
+      #print(user_id_list_short[j])
+      
+      temp_data <- daynamica_data$ucalitems_temporal_plot %>%
+        as_tibble() %>%
+        filter(user_id == user_id_list[j])
+      
+      tab <- tibble(start_date = as.Date(min(temp_data$start_date):max(temp_data$start_date), origin = "1970-01-01"),
+             day_number = lubridate::wday(start_date),
+             check = ifelse(day_number == 1, 1, 0),
+             cum_total = cumsum(check))
+      
+      
+      # tab <- temp_data %>%
+      #   select(start_date, dow) %>%
+      #   mutate(day_number = lubridate::wday(start_date)) %>%
+      #   distinct() %>%
+      #   arrange(start_date) %>%
+      #   mutate(check = ifelse(day_number == 1, 1, 0),
+      #          cum_total = cumsum(check))
+      
+      unique_weeks <- unique(tab$cum_total)
+      for(k in 1:length(unique_weeks)){
+        current_dates <- tab %>%
+          filter(cum_total == unique_weeks[k])
+        suppressWarnings(dates_this_week <- as.Date((current_dates$start_date - current_dates$day_number + 1) + 0:6, origin = "1970-01-01"))
+        
+        #tab_text <- paste0(min(current_dates$start_date), " : ", max(current_dates$start_date))
+        tab_text <- paste0(min(dates_this_week), " : ", max(dates_this_week))
+        cat("\n\n#### ", tab_text, " \n")
+        analysis_data <- temp_data %>%
+          filter(start_date %in% dates_this_week)
+        if(nrow(analysis_data) == 0){
+          print("No data during this date range")
+          next
+        }
+          analysis_data <- analysis_data %>%
+            bind_rows(analysis_data[rep(1, 7),] %>% # This code allows all days of the week to be displayed even if we don't have data on those dates.
+                      mutate(start_time = "04:00:00",
+                             end_time = "04:00:01",
+                             start_date = dates_this_week,
+                             type_decoded = "ACTIVITY")) %>%
+            mutate(end_time = ifelse(end_time == "00:00:00", "24:00:00", end_time))
+      p <- suppressMessages(generate_time_of_day_plot(analysis_data,
+                           color_codes_activity = color_codes_activity_data,
+                           color_codes_trips = color_codes_trips_data,
+                           min_time = min_time,
+                           max_time = max_time)) + 
+        ggtitle(paste0("Calendar Item Visualization: ", user_id_list_short[j]),
+                subtitle = paste0("Date Range: ", tab_text))
+      print(p)
+      }
+  }
+}
+
+```

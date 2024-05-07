@@ -1,0 +1,8 @@
+"IsWeekend","Statistics","Median","Mean","SD","Min","Max"
+"Weekday","Recorded Data per Day (Minutes)",1440,1440,NA,1440,1440
+"Weekday","Total Activity Duration per Day (Minutes)",1421,1421,NA,1421,1421
+"Weekday","Total Trip Duration per Day (Minutes)",19,19,NA,19,19
+"Weekday","Total Trip Distance per Day (Miles)",5.92609896668419,5.92609896668419,NA,5.92609896668419,5.92609896668419
+"Weekday","Activity Count per Day",3,3,NA,3,3
+"Weekday","Trip (Segment) Count per Day",2,2,NA,2,2
+"Weekday","Trip (Complete) Count per Day",2,2,NA,2,2

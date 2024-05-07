@@ -1,0 +1,15 @@
+"IsWeekend","Statistics","Median","Mean","SD","Min","Max"
+"Weekday","Recorded Data per Day (Minutes)",1440,1375.40669856459,183.109878208819,746.666666666667,1440
+"Weekend","Recorded Data per Day (Minutes)",1440,1366.75,182.00475643311,746.666666666667,1440
+"Weekend","Total Activity Duration per Day (Minutes)",1440,1295.91666666667,218.769075921314,620,1440
+"Weekday","Total Activity Duration per Day (Minutes)",1440,1290.2711323764,210.551729593139,466.666666666667,1606.66666666667
+"Weekend","Total Trip Duration per Day (Minutes)",0,70.8333333333333,108.612914147213,0,333.333333333333
+"Weekday","Total Trip Duration per Day (Minutes)",0,85.1355661881978,149.376893884611,0,1166.66666666667
+"Weekend","Total Trip Distance per Day (Miles)",0,7.56889646899776,29.3681370078114,0,243.096015497185
+"Weekday","Total Trip Distance per Day (Miles)",0,7.11649165506549,28.2195013037964,0,236.0050943085
+"Weekend","Activity Count per Day",5,5.675,3.65878516187539,1,19
+"Weekday","Activity Count per Day",5,5.85645933014354,3.57992115559954,1,21
+"Weekend","Trip (Segment) Count per Day",4,4.425,4.36259996802511,0,21
+"Weekday","Trip (Segment) Count per Day",4,4.51196172248804,4.19604902058391,0,24
+"Weekend","Trip (Complete) Count per Day",3.5,3.975,3.72461874694935,0,17
+"Weekday","Trip (Complete) Count per Day",3,4.11004784688995,3.56159327160122,0,20

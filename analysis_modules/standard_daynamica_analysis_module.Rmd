@@ -1,0 +1,571 @@
+---
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: F
+    theme: journal
+    code_folding: hide
+params:
+  report_author: NULL
+  report_title: Daynamica Standard Report
+  daynamica_data: NULL
+  export_results: F
+  output_location: NULL
+  user_id_list: NULL
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+title: `r params$report_title`
+author: `r params$report_author`
+date: `r Sys.Date()`
+
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+# Overview
+
+This report provides a collection of foundational tables and figures which summarize key details about this Daynamica dataset. This is meant to serve as a starting point for analyses and to help researchers identify areas for deeper exploration. The data used in this report has been preprocessed and cleaned prior to usage by this report. Certain analysis decisions were required to be prespecified. For instance, a key decision is the amount of data required for a day to be considered valid and to be included in the analysis. A common strategy is to require at least 12 or 16 hours of data be collected in a given day for that day to count as valid. The first table of the next section shows a summary related to this idea. 
+
+```{r, message = F, warning = F}
+library(plotly)
+library(htmlwidgets)
+library(sf)
+library(geosphere)
+library(rgeos)
+library(gepaf)
+library(sfdep)
+
+source('../helper_functions/s3_valid_data.R')
+source('../helper_functions/s4_temporal_plot.R')
+source('../helper_functions/s5_cal_activity_space.R')
+source('../helper_functions/s6_leg_to_trip.R')
+source('../helper_functions/s7_statistics_summary.R')
+source('../helper_functions/s8_summary_save.R')
+if(params$export_results){
+  # Need to choose a new name
+  #output_subfolder_name <- paste0(params$output_location, paste0("/results_", gsub(":", "_", Sys.time())))
+  output_subfolder_name <- paste0(params$output_location, paste0("/results"))
+
+  main_dir <- getwd()
+  result_location <- file.path(main_dir, output_subfolder_name)
+  if(!dir.exists(result_location)){
+    dir.create(result_location)
+  }
+  #setwd(result_location)
+}
+
+
+daynamica_data <- params$daynamica_data
+options(dplyr.summarise.inform = FALSE)
+```
+
+# General Daynamica Summary Statistics {.tabset}
+
+```{r}
+
+if("wide_ema_survey_table" %in% names(daynamica_data)){
+  total_ema_surveys = daynamica_data$wide_ema_survey_table %>% nrow()
+  days_with_at_least_1_ema_survey = daynamica_data$wide_ema_survey_table %>% select(user_id, start_date) %>% distinct() %>% nrow()
+} else{
+  total_ema_surveys = NA
+  days_with_at_least_1_ema_survey = NA
+}
+if("wide_calendar_item_survey_table" %in% names(daynamica_data)){
+  total_cal_item_surveys = daynamica_data$wide_calendar_item_survey_table %>% nrow()
+  total_cal_item_surveys_without_duplicates = sum(csv_dict_sub$ucal_items_temporal_plot_with_survey_data$survey_not_null)
+} else{
+  total_cal_item_surveys = NA
+  total_cal_item_surveys_without_duplicates = NA
+}
+
+
+tibble("Unique Users" = daynamica_data$ucalitems_temporal_plot$user_id %>% unique() %>% length(),
+       "Total Days of Data" = daynamica_data$ucalitems_temporal_plot %>%
+                                select(user_id, start_date) %>%
+                                distinct() %>% nrow(),
+       "Total Unique Calendar Items" = daynamica_data$ucalitems_temporal_plot %>% nrow(),
+       "Total EMA Surveys" = total_ema_surveys,
+       "Days with at least 1 EMA Survey" = days_with_at_least_1_ema_survey,
+       "Total Calendar Item Surveys (with Duplicates)" = total_cal_item_surveys, 
+       "Total Calendar Item Surveys (without Duplicates)" = total_cal_item_surveys_without_duplicates,
+       "First Date of Data Collection" = daynamica_data$ucalitems_temporal_plot$start_date %>% min(),
+       "Last Date of Data Collection" = daynamica_data$ucalitems_temporal_plot$start_date %>% max()) %>%
+  mutate(temp = NA) %>%
+  tidyr::pivot_longer(cols = -temp,
+                      names_to = "Dataset Statsitics",
+                      values_to = "Output", 
+                      values_transform = as.character) %>%
+  select(-temp) %>%
+  knitr::kable()
+
+participant_start_end_dates <- 
+  daynamica_data$ucalitems_temporal_plot %>%
+  group_by(user_id) %>%
+  dplyr::summarize(first_date = as.numeric(min(start_date)),
+            last_date = as.numeric(max(start_date))) %>%
+  arrange(first_date)
+
+date_range <- min(participant_start_end_dates$first_date):max(participant_start_end_dates$last_date)
+cumulative_participants <- rep(NA, length(date_range))
+active_participants <- rep(NA, length(date_range))
+for(i in 1:length(date_range)){
+  cumulative_participants[i] <- participant_start_end_dates %>%
+    filter(first_date <= date_range[i]) %>%
+    nrow()
+  
+  active_participants[i] <- participant_start_end_dates %>%
+    filter(first_date <= date_range[i],
+           last_date >= date_range[i]) %>%
+    nrow()
+}
+participant_data_plotting_data <- 
+  tibble(date_range, 
+         cumulative_participants,
+         active_participants,
+         clean_date = as.Date(date_range, origin = "1970-01-01"))
+```
+
+## Cummulative Enrollment Plot
+
+```{r}
+participant_data_plotting_data %>%
+  ggplot(aes(x = clean_date, y = cumulative_participants)) + 
+  geom_line() + 
+  ylab("Cumulative Participants Enrolled") +
+  xlab("Date") + 
+  theme_bw()+
+  scale_x_date(date_labels = "%b %y") + 
+  ggtitle("Cumulative Participants Enrolled in the study")
+
+```
+
+## Active Participant Plot
+
+```{r}
+participant_data_plotting_data %>%
+  ggplot(aes(x = clean_date, y = active_participants)) + 
+  geom_line() + 
+  ylab("Active Participants") +
+  xlab("Date") + 
+  theme_bw()+
+  scale_x_date(date_labels = "%b %y") + 
+  geom_smooth(se = F, color = "darkgrey", method = "loess") + 
+  ggtitle("Active Participants in the study")
+
+```
+
+## Duration of Data Collection
+
+```{r}
+participant_start_end_dates %>%
+  dplyr::mutate(row_number = row_number()) %>%
+  dplyr::mutate(first_date = as.Date(first_date, origin = "1970-01-01"),
+                last_date = as.Date(last_date,  origin = "1970-01-01")) %>%
+  ggplot(aes(y = row_number)) + 
+  geom_segment(aes(x = first_date, xend = last_date,
+                   y = row_number, yend = row_number), col = "grey") + 
+    geom_point(aes(x = first_date,
+                    y = row_number), col = "black") + 
+    geom_point(aes(x = last_date,
+                    y = row_number), col = "black") +
+      theme_bw() + 
+  ylab("") + 
+  scale_x_date(date_labels = "%b %y") +
+  xlab("Duration of Data Collection") + 
+  ggtitle("Participant Duration of Data Collection") + 
+  theme(axis.text.y = element_blank(), 
+        axis.ticks.y = element_blank())
+
+```
+
+## Distribution of Data per User
+
+```{r}
+temp <- 
+  participant_start_end_dates %>%
+  dplyr::mutate(duration = last_date - first_date)
+duration_percentile = quantile(temp$duration, probs = seq(0, 1, by = 0.01))
+tibble(perc_rank = as.numeric(gsub("%","" , names(duration_percentile))),
+       duration_percentile
+) %>%
+  ggplot(aes(x = duration_percentile, y = 1-perc_rank + 100)) + 
+  geom_line() + 
+  xlab("Days of Data Collection") + 
+  ylab("Percent of the population who collected at least that much data") +
+  theme_bw()+ 
+  ggtitle("Percent of participants collected at least X days of data")
+
+
+tibble(perc_rank = as.numeric(gsub("%","" , names(duration_percentile))),
+       duration_percentile
+) %>%
+  filter(perc_rank < 95) %>%
+  ggplot(aes(x = duration_percentile, y = 1-perc_rank + 100)) + 
+  geom_line() + 
+  xlab("Days of Data Collection") + 
+  ylab("Percent of the population who collected at least that much data") +
+  theme_bw() + 
+  ggtitle("Percent of participants collected at least X days of data",
+          "Removing the top 5% of participants who collected the most days of data")
+```
+
+
+# Quantity of Daynamica Data
+
+This table provides information on the number of days of data which were collected within the study. The totals are stratified by day of the week as well as overall. The remaining columns outline the percentage of days which have at least that many hours of data. It should be noted that prior to the analysis, a filter exists to specify how many hours must be collected for a day to be considered valid. This filter may be modified in the data preparation steps prior to generating this report. More restrictive filtering may result in higher quality but fewer days while less restrictive filtering will result in more days being included in the analysis. Our current recommendation is to use a filter somewhere between 12-16 hours of data per person as a requirement. 
+
+```{r }
+
+temp_table <- 
+  count_valid_per_days(day_summary = daynamica_data[['day_summary']], 
+                       numerator_col = 'with_subtype', 
+                       denominator_filter = 'interact_by_confirm>0') %>%
+  mutate(`Day of the Week` = ifelse(`Day of the Week` == "Total", "All Days", `Day of the Week`))
+
+temp_table %>%
+  knitr::kable()
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location, "/Quantity_of_Daynamica_Data.csv"), row.names = F)
+}
+```
+
+
+# Visualizing Participant Summaries {.tabset}
+
+A quintessential first task when exploring Daynamica data is to begin with examining the sequential patterns of activities in trips across multiple days. The visualizations provided below highlight one such method of exploration. Using these visualizations, we may assess the patterns within and between days in how participants engaged in activities and trips. The taller segments represent Activities and the narrow (often shorter in duration) segments represent Trips. Each segment is colored to identify which type of Activity or Trip it represents. 
+
+For a more robust review of these plots, use the *Calendar Item Visualization Module*. Alternatively, these plots are made using the function *generate_time_of_day_plot* from the "s3_temporal_plot.R" set of helper functions. Interested researchers may utilize this function directly or create their own to fit their specific needs. 
+
+```{r}
+# Defined globally for the entire dataset
+library(lubridate)
+library(ggnewscale)
+library(wesanderson)
+
+unique_activity_labels <- 
+  daynamica_data$ucalitems_temporal_plot %>%
+  tibble() %>%
+  filter(type_decoded == "ACTIVITY") %>%
+  pull(subtype_decoded) %>% unique()
+unique_trip_labels <- 
+  daynamica_data$ucalitems_temporal_plot %>%
+  tibble() %>%
+  filter(type_decoded == "TRIP") %>%
+  pull(subtype_decoded) %>% unique()
+  
+activity_palette <- c(wes_palette("Zissou1", 1),
+                      wes_palette("Zissou1", 5)[4:5],
+                      rev(wes_palette("Royal1", 4)[2:4]),
+                      wes_palette("Moonrise3", 2),
+                      wes_palette("GrandBudapest2"),
+                      wes_palette("GrandBudapest1"),
+                      wes_palette("Chevalier1", 4))[1:length(unique_activity_labels)]
+
+
+trip_palette <- c(palette.colors(n = 8, "ggplot2")[-1],
+                  palette.colors(n = 8, "alphabet"))[1:length(unique_trip_labels)]
+
+
+color_codes_activity_data <- data.frame(labels = unique_activity_labels,
+                                   values = activity_palette)
+
+color_codes_trips_data <- data.frame(labels = unique_trip_labels,
+                                values = trip_palette)
+
+```
+
+
+```{r, fig.width = 20, fig.height = 15, results = "asis"}
+user_id_list = params$user_id_list
+
+user_id_list_labels <- gsub("@", "at", user_id_list)
+
+
+if(!is.null(user_id_list)){
+  if(params$export_results & !dir.exists(paste0(result_location,"/day_level_visualizations"))){
+  dir.create(paste0(result_location,"/day_level_visualizations"))
+    }
+ for(i in 1:length(user_id_list)){
+ cat(paste0("\n\n## ", "Participant: ", user_id_list_labels[i], "\n"))
+  p <- suppressMessages(generate_time_of_day_plot(daynamica_data$ucalitems_temporal_plot %>%
+                              as_tibble() %>%
+                              filter(user_id == user_id_list[i]),
+                            color_codes_activity = color_codes_activity_data,
+                            color_codes_trips = color_codes_trips_data))
+  print(p)
+
+  
+  if(params$export_results){
+    ggsave(filename = paste0(result_location,paste0("/day_level_visualizations/",  user_id_list[i], "_plot.png")), p,
+                             device = png, width = 20, heigh = 20, dpi = 450)
+  
+}
+ }
+}
+
+
+
+```
+
+
+# Day Level Summary Statistics {.tabset}
+
+This section provides collections of summary tables and figures pertaining to different key characteristics within a Daynamica dataset. 
+
+```{r, message = F, print = F, warning = F}
+# Data Prep related to spatial analysis
+# daynamica_data[['ucalitems_activity']] = str2cor_tb(
+#   ucalitems_activity = daynamica_data[['ucalitems_activity']], 
+#   origin_crs = 4326,
+#   projected_crs = 3857)
+# mile = 1609.34
+# buffer_dis_meter = mile * .1 
+# daynamica_data[['convex_hull']] <- cal_convex_hull(
+#   ucalitems_activity = daynamica_data[['ucalitems_activity']],
+#   buffer_dis_meter = buffer_dis_meter)
+# daynamica_data[['sde_ellipse']] <- cal_sde(
+#   ucalitems_activity = daynamica_data[['ucalitems_activity']],
+#   buffer_dis_meter = buffer_dis_meter)
+daynamica_data[['leg2trip']] = leg2trip(daynamica_data[['ucalitems_temporal_plot']],
+                                      criterion = 'distance')
+
+```
+
+
+## Counts per Day {.tabset}
+
+This table provides day level summary statistics. For each category, the Median, Mean, SD, Min and Max are provided. These summary statistics are computed on the per day level. See the Weekday vs Weekend Breakdown tab for a stratified tabulation. For a detailed description of the specific statistics, see our Daynamica User Guide,
+
+### All Data
+
+```{r}
+temp_table <- overview_statistics(csv_dict = daynamica_data, 
+                    stat_group_cols = c('Statistics')) 
+
+temp_table%>%
+  knitr::kable(digits = 2)
+
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location,"/Aggregate Day Level Statsitics.csv"), row.names = F)
+}
+```
+
+### Weekday vs Weekend Breakdown
+
+```{r}
+temp_table <- 
+  overview_statistics(csv_dict = daynamica_data, 
+                    stat_group_cols = c('IsWeekend','Statistics'))%>%
+  mutate(IsWeekend = ifelse(IsWeekend == T, "Weekend", "Weekday"))
+
+temp_table %>%
+  knitr::kable(digits = 2)
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location,"/Aggregate Day Level Statsitics stratified by day of week.csv"), row.names = F)
+}
+
+```
+
+## Trip Summary Statistics {.tabset}
+
+This section focuses on Trip level summary statistics. The data is organized across a number of factors. Along the rows, different trip modalities are listed. Along the columns the total unique trip counts, trip durations in minutes, and trip distances in miles traveled are listed. All units are standardized as totals per day.  The columns are further stratified by day of the week groupings: All days, Weekdays only and Weekends only. 
+
+Alongside the summary table, interactive visualizations are included to highlight the different totals presented in the summary table. 
+
+*Note:* This table focuses on trip subcomponents and which may or may not represent complete trips. For instance, assume that a trip involved the following segments: Walk – Car – Walk. In this case, there would be two Walk components and one Car component. When counting the number of Walk segments, this trip would contribute two segments to the total for this day but only one car segment. To get the total duration and distance traveled while walking in this trip, both Walking segments must be added together. 
+To get average totals per trip segment (e.g. Average Distance per Walking Segment), row-wise division must be preformed between distance/duration and counts (Walking Distance Traveled per Day / Walking Segments per Day). 
+
+
+### Summary Table
+
+```{r}
+temp_table <- activity_trip(ucalitems=daynamica_data[['ucalitems_temporal_plot']], 
+                      day_summary=daynamica_data[['day_summary']], 
+                      mytype='TRIP', 
+                      trip_num=-1) 
+temp_table[-which(temp_table[,1] == "Total"),] %>%
+  arrange(subtype_decoded   ) %>%
+  bind_rows(temp_table[which(temp_table[,1] == "Total"),])  %>%
+  knitr::kable(digits = 2)
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location, "/Trip Count Summary Table - Trip Subcomponent.csv"), row.names = F)
+}
+```
+
+### Trip Count Figure
+
+```{r}
+activity_trip_figure(ucalitems=daynamica_data[['leg2trip']],
+                             tb = 'leg2trip',
+                             day_summary=daynamica_data[['day_summary']], 
+                             mytype='TRIP', 
+                             directory = 'Results',
+                             agg_col='id')
+```
+
+### Trip Duration Figure
+
+
+```{r}
+activity_trip_figure(ucalitems=daynamica_data[['leg2trip']],
+                             tb = 'leg2trip',
+                             day_summary=daynamica_data[['day_summary']], 
+                             mytype='TRIP', 
+                             directory = 'Results',
+                             agg_col='duration_after_split')
+```
+
+### Trip Distance Figure
+
+
+```{r}
+activity_trip_figure(ucalitems=daynamica_data[['leg2trip']],
+                             tb = 'leg2trip',
+                             day_summary=daynamica_data[['day_summary']], 
+                             mytype='TRIP', 
+                             directory = 'Results',
+                             agg_col='distance_after_split')
+```
+
+## Primary Mode Summary Statistics {.tabset}
+ This section focuses on tabulating results based on the Primary travel model. The Primary Travel Mode is defined as the travel mode in which you traveled the farthest distance during a trip. For example, if you were to Walk for 1 mile in 20 minutes, the drive in a CAR for 5 minutes for 2 miles, in that trip, you primary travel mode would be CAR even though your longest duration sub-mode was WALK. 
+
+### Summary Table
+
+```{r, warning = F}
+data <- daynamica_data$ucalitems_temporal_plot
+
+temporary_table <- data %>%
+  tibble() %>%
+  arrange(user_id,
+          start_date,
+          start_timestamp) %>%
+  mutate(activity_indicator = ifelse(type_decoded == "ACTIVITY", 1, 0)) %>%
+  mutate(trip_id = cumsum(activity_indicator)) %>%
+  select(user_id, start_date,
+         start_time, end_time,
+         type_decoded, subtype_decoded,
+         type_decoded_pre, type_decoded_next,
+         trip_purpose, trip_id,
+         distance_after_split, duration_after_split,
+         IsWeekend) %>%
+  filter(type_decoded == "TRIP") %>%
+  group_by(user_id, type_decoded, start_date, trip_id, IsWeekend) %>%
+  mutate(is_max_distance = ifelse(distance_after_split == max(distance_after_split), 1, 0)) %>% 
+  mutate(primary_mode = as.character(case_when(is_max_distance == 1 ~ subtype_decoded))) %>%
+  mutate(primary_mode = ifelse(is.na(primary_mode), "", primary_mode)) %>%
+  mutate(distance_after_split = sum(distance_after_split, na.rm = T),
+         duration_after_split = sum(duration_after_split, na.rm = T)) %>%
+  filter(is_max_distance == 1) %>%
+  distinct() %>%
+  data.table()
+
+temp_table <- activity_trip(ucalitems=temporary_table, 
+                      day_summary=daynamica_data[['day_summary']], 
+                      by_field = "primary_mode",
+                      mytype='TRIP', 
+                      trip_num=-1) 
+temp_table[-which(temp_table[,1] == "Total"),] %>%
+  arrange(primary_mode  ) %>%
+  bind_rows(temp_table[which(temp_table[,1] == "Total"),])  %>%
+  knitr::kable(digits = 2)
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location, "/Trip Summary Table - Primary Mode.csv"), row.names = F)
+}
+
+# Note to self. Eventually need to build in functionality to build the figures as well. 
+```
+
+
+## Activity Summary Statistics {.tabset}
+
+This section focuses on Activity level summary statistics. The data is organized across a number of factors. Along the rows, different activity types are listed. Along the columns the counts and duration of each activity type are provided. All units are standardized as totals per day.  The columns are further stratified by day of the week groupings: All days, Weekdays only and Weekends only. 
+
+Alongside the summary table, interactive visualizations are included to highlight the different totals presented in the summary table. 
+
+
+### Summary Table
+
+```{r}
+temp_table <- activity_trip(ucalitems=daynamica_data[['ucalitems_temporal_plot']], 
+                      day_summary=daynamica_data[['day_summary']], 
+                      mytype='ACTIVITY', 
+                      trip_num=-1) 
+
+temp_table[-which(temp_table[,1] == "Total"),] %>%
+  arrange(subtype_decoded ) %>%
+  bind_rows(temp_table[which(temp_table[,1] == "Total"),])  %>%
+  knitr::kable(digits = 2)
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location, "/Activity Count Summary Table .csv"), row.names = F)
+}
+```
+
+### Activity Count Figure
+
+```{r}
+activity_trip_figure(ucalitems=daynamica_data[['leg2trip']],
+                             tb = 'leg2trip',
+                             day_summary=daynamica_data[['day_summary']], 
+                             mytype='ACTIVITY', 
+                             directory = 'Results',
+                             agg_col='id')
+```
+
+### Activity Duration Figure
+
+
+```{r}
+activity_trip_figure(ucalitems=daynamica_data[['leg2trip']],
+                             tb = 'leg2trip',
+                             day_summary=daynamica_data[['day_summary']], 
+                             mytype='ACTIVITY', 
+                             directory = 'Results',
+                             agg_col='duration_after_split')
+```
+
+
+## Trip Purpose Summary Statistics {.tabset}
+
+This section focuses on the Trip Purpose level summary statistics. Trip purposes are defined as the proximate upcoming activity type for a given trip. For example, if I am travelling to go Home via my Car, then for that trip, my trip purpose is Home. In this case, the summary statistics pertain to the specific trip, but are aggregated (by row) based on the purpose of that trip. 
+
+
+### Summary Table
+
+```{r}
+temp_table <- activity_trip(ucalitems=daynamica_data[['ucalitems_temporal_plot']], 
+                      day_summary=daynamica_data[['day_summary']], 
+                      mytype='TRIP', 
+                      trip_num=-1,
+              by_field = "trip_purpose") 
+temp_table[-which(temp_table[,1] == "Total"),] %>%
+  arrange(trip_purpose) %>%
+  bind_rows(temp_table[which(temp_table[,1] == "Total"),])  %>%
+  knitr::kable(digits = 2)
+
+if(params$export_results){
+  write.csv(temp_table, file = paste0(result_location, "/Trip Purpose Count Summary Table.csv"), row.names = F)
+}
+```
+
