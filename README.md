@@ -1,4 +1,5 @@
-# R-Standard_Analysis_Tools
+# Overview
+
 An R repository for code related to standard analysis tools. Helps with summary statistics, standard tables, and common data visualization techniques.
 
 This code repository contains a collection of functions to aid in the processing and analysis of Daynamica data. Alongside the analysis tools, an example dataset is also provided. These tools were developed to provide a wide range of functionality for manipulating Daynamica data while also making it as user-friendly as possible. 
@@ -6,6 +7,13 @@ This code repository contains a collection of functions to aid in the processing
 For those who are experienced with using R, we strongly encourage you to dive into the code and see how you might customize the different functions to meet your exact needs. 
 
 It is our hope to continually improve this code repo and add new modules to expand the list of options for analyzing Daynamica data. If you have a common set of analyses that you perform that isn't addressed in our repo, please let us know. We want to develop a thriving community of Dayanamica data users who can share and improve each others analysis. 
+
+# Learn more about Daynamica
+
+If you are interested in learning more about Daynamica and its history, we recommend reading this chapter from an upcoming book about Daynamica.
+
+
+<a href="landing_page_files/Chapter 3. Digital Day Reconstruction 5.12.2024.pdf" target="_blank">Daynamica Book Chapter.</a>
 
 ## Getting Started
 
