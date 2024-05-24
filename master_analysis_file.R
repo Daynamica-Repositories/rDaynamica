@@ -417,7 +417,10 @@ limit_tod <- c(0, 24)/24 # Display all hours
 # 
 # activity_palette <- c(wes_palette("Zissou1", 1),
 #                       wes_palette("Zissou1", 5)[4:5],
-#                       rev(wes_palette("Royal1", 4)[2:4]),
+#                       "#679669", # Green
+#                       "#876796", # Purple
+#                       "#96676F", # Dark red purple
+#                       rev(wes_palette("Royal1", 4)[c(4)]),
 #                       wes_palette("Moonrise3", 2),
 #                       wes_palette("GrandBudapest2"),
 #                       wes_palette("GrandBudapest1"),

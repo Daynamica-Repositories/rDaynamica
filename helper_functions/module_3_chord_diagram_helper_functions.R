@@ -169,7 +169,7 @@ create_individual_plots <- function(data_list, data_names = NULL,
                     labels.niceFacing = FALSE, labels.pos.adjust = FALSE)
       })
       if(!is.null(data_names)){
-        text(x = 0, y = 1, label = data_names[i], cex = 1.8)
+        text(x = 0.85, y = 1, label = data_names[i], cex = 1.5)
       }
       
       # Create a clock for the Time of Day. (This assumes that we are working with 5 minute units.)
@@ -178,8 +178,8 @@ create_individual_plots <- function(data_list, data_names = NULL,
         time_of_day <- paste0(12, ":", f%%4*15, ifelse(f < 48, " AM", " PM"))
       }
       time_of_day <- gsub(":0 ", ":00 ", time_of_day)
-      text(x = -0.75, y = 1.0, labels = c("Time:"), cex = 1.5)
-      text(x = -0.75, y = 0.92, labels = time_of_day, cex = 1.5)
+      text(x = -0.85, y = 1.0, labels = c("Time:"), cex = 1.3)
+      text(x = -0.85, y = 0.88, labels = time_of_day, cex = 1.3)
       # close plotting device
     }
     

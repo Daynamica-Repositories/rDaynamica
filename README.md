@@ -88,7 +88,7 @@ The final output is an HTML report.
 
 Click on the report to see the full example report!
 
-<a href="./outputs/ucal_visualization_output/ucal_visualization_output.html">
+<a href="./outputs/ucal_visualization_output/ucal_visualization_example.html">
  <img src="./landing_page_files/module2_header.png" width="550" />
 </a>
 
