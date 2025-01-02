@@ -98,13 +98,15 @@ Click on the report to see the full example report!
 This module produces a collection of plots and a final GIF using a unique visualization format that highlights the movement patterns of the Daynamica data. See the example below of the gif made using the anonymized data provided alongside this code repository. 
 <img src="./outputs/plot-gif/ucal_chord_diagram_visualization_all_data_visualization.gif" width="350" />
 
+### Module 4: Activity Chaining Sequences
+
+This module provides a tutorial on how to generate and visualize Activity Chains. Activity Chains represent a novel way to summarize an entire day's worth of information into a single short character string by removing the element of time, instead focusing on the order of activities. This allows for the development of population level tables and figures in a digestible format. An example output made possible via activity chains is provided below. 
+
+<img src="./landing_page_files/Module 4_example.png" width="550" />
+
 ## In Development Modules
 
-### Module 4: Standard Sequence Alignment Daynamica Analysis Report
-
-More to come on this soon!
-
-### Module 5: Activity Chaining analyses
+### Module 5: Standard Sequence Alignment Daynamica Analysis Report
 
 More to come on this soon!
 

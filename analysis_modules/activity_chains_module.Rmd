@@ -1,0 +1,371 @@
+---
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: F
+    theme: journal
+    code_folding: show
+params:
+  report_author: NULL
+  report_title: Calendar Item Visualization Report
+  daynamica_data: NULL
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+title: `r params$report_title`
+author: `r params$report_author`
+date: `r Sys.Date()`
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+
+
+```{r, message = F, warning = F}
+library(dplyr)
+library(ggplot2)
+
+source('../helper_functions/s11_activity_chains_helper_functions.R')
+
+knitr::opts_chunk$set(echo = TRUE, fig.width = 12, fig.height = 8, message = F, warning = F)
+
+```
+
+# Overview
+This report serves as a tutorial on how to generate and analyze **Activity Chains** within a Daynamica dataset. The primary input to the analysis is the calendar items dataset (ucalitems_temporal_plot). Because this report is meant to serve as a code tutorial, the code used to generate the report will be displayed throughout. The code may be hidden via the grey "Code" button in the top right corner. For specific details on the functions used in this tutorial, see "helper_functions/s11_activity_chains_helper_functions.R".
+
+Activity Chains are defined as a sequential string of activities and trips that a person engages in throughout the day. The algorithm for constructing the chain is as follows. 
+
+Algorithm:
+
+1.Group data by Person:Day
+
+2. Per Person:Day, sort by Calendar Item start time
+
+3. Filter all activities and trips less than X minutes where X is an input.
+
+4. Relabel Activities and Trips into single letter variables*
+
+5. Reduced duplicated labels (e.g. HOOWH -> HOWH). This feature may be turned off if desired. 
+
+
+* **Note**: The function allows for special labeling of specific activity types. It defaults to labeling Home - "H", Workplace / Work - "W" and all other activities as "O". Trips are labeled as "T". The function allows for new subtypes to get additional labels. 
+
+# Creating Acitivity Chains
+
+To create the activity chains, use the function `create_activity_chains`. The specific arguments are dataset, include_trips (T/F), minimum duration_min (see step 3), special_labels_long and special_labels_short (see step 4), and collapse_identical_labels (T/F) (See Step 5). 
+
+```{r}
+library(networkD3)
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(webshot)
+library(lubridate)
+```
+
+## Including / Excluding Trips
+
+```{r, echo = T}
+csv_dict_sub <- params$daynamica_data
+create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                       include_trips = T,
+                       minimum_duration_min = 15) %>%
+  head()
+
+create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                       include_trips = F,
+                       minimum_duration_min = 15) %>%
+  head()
+
+```
+
+## Adding New Labels
+
+In this example, we add a new label for "Food & Meal" called "F". 
+
+```{r, echo = T}
+create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                       include_trips = T,
+                       special_labels_long = c("HOME", "WORKPLACE", "WORK"),
+                       special_labels_short = c("H", "W", "W"),
+                       minimum_duration_min = 15,
+                       collapse_identical_labels = T)  %>%
+  pull(string) %>% table() %>% sort()
+
+create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                       include_trips = F,
+                       special_labels_long = c("HOME", "WORKPLACE", "WORK", "FOOD & MEAL"),
+                       special_labels_short = c("H", "W", "W", "F"),
+                       minimum_duration_min = 15,
+                       collapse_identical_labels = T) %>%
+  pull(string) %>% table() %>% sort()
+
+```
+
+# Summarizing Activity Chains
+
+## Creating a conditional Activity Chains summary
+
+In this section, we show how to create an conditional summary table. This is created via the function `create_sankey_data`. This function generates a table showing the number of activity chains that have chains whose start matches a specific string pattern (e.g. HOH). 
+
+- prev: Previous Activity Chain String
+- current: Current Activity Chain label
+- count: Number of Activity Chains in this dataset that match prev + current
+- group_precentage: Of the Activity Chains that match the prev Activity String, what proportion have the current Activity Chain label. 
+
+For example we might have the following dataset.
+
+```{r}
+activity_chains_data <- 
+  create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                         include_trips = T,
+                         minimum_duration_min = 15, collapse_identical_labels = T)
+create_sankey_data(activity_chains_data, lower_limit = 0.01)[1,]
+
+```
+
+In this case, prev = "", so all Activity Chains apply. For all applicable Activity Chains, 411 Chains had a first activity as "H", of all Activity Chains, 411 represented 69% of that population. 
+
+In another example, we have prev = "HO", so we are only interested in Chains that start with "HO". Because current = "T", we are interested in ACtivity Chains that start with or are "HOT". There are 23 matching that description, and they represent 17% of all chains that start with "HO". 
+
+```{r}
+
+create_sankey_data(activity_chains_data, lower_limit = 0.01)[10,]
+
+```
+
+It should be noted that when current = "X" it represents a terminated string. So in this case, if prev = "H" and current = "X", we are interested in the count of chains that start with "H" and do not add any additional characters to the chain (so "H" alone). Of the chains starting with "H", 28% ended with only "H" instead of continuing on. 
+
+```{r}
+
+create_sankey_data(activity_chains_data, lower_limit = 0.01)[8,]
+
+```
+
+## Visualizing conditional Activity Chains Summary Tables (Sankey Plots)
+
+Plots can be created using `create_plot_from_data` using the output of `create_sankey_data` directly`. The plot may be modified to only include chains that start with "H". 
+
+This function creates an HTML widget figure which allows for tuning of the figure where you may drag the nodes around to match specific aesthetic preferences. This is at the expense of limited reproducibility in terms of exporting standardized outputs. These plots may be saved via a computer screenshot. 
+
+```{r}
+activity_chains_data <- 
+  create_activity_chains(csv_dict_sub$ucalitems_temporal_plot,
+                         include_trips = T,
+                         minimum_duration_min = 15, collapse_identical_labels = T)
+
+
+sankey_data <- create_sankey_data(activity_chains_data, lower_limit = 0.01)
+q <- create_plot_from_data(sankey_data, start_from_H = T)
+#q
+
+
+# We may also export a single html document with that plot using htmlwidgets::saveWidget functionality. 
+# 
+#htmlwidgets::saveWidget(widget = q,
+#                        file = "../outputs/Module 4/temp.html",
+#                        selfcontained = TRUE)
+```
+
+
+<!--html_preserve-->
+
+<iframe src = "temp.html" width = "1200" height= "800"> </iframe>
+
+<!--/html_preserve-->
+
+## ggplot2 / ggalluvial alternative visualization
+
+This is an alternative visual style for activity chains which may provide a more standardized format. This visualization may be useful when doing a large number of sub-group analyses which requires frequent generation of these plots. 
+
+```{r}
+
+
+#install.packages("ggalluvial")  
+library(ggalluvial)
+
+activity_chains_data %>%
+  group_by(string) %>%
+  dplyr::summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 30) %>%
+mutate(string = paste0(string, "X"), 
+       first_char = substr(string, 1, 1),
+       second_char = substr(string, 2, 2),
+       third_char = substr(string, 3, 3),
+       fourth_char = substr(string, 4, 4),
+       fifth_char = substr(string, 5, 5),
+       sixth_char = substr(string, 6, 6),
+       seventh_char = substr(string, 7, 7),
+       eigth_char = substr(string, 8, 8)) %>%
+  filter(first_char == "H") %>%
+  to_lodes_form(key = "string", axes = c("first_char", "second_char",
+                                         "third_char", "fourth_char",
+                                         "fifth_char")) %>%
+  mutate(stratum = factor(stratum, levels = c("H", "O", "W", "T", "X"))) %>%
+  ggplot(aes(x = string, y = n, stratum = stratum, alluvium = alluvium, label = stratum)) + 
+  geom_flow(aes(fill = stratum)) +
+  geom_stratum() + geom_text(stat = "stratum") +
+  theme_bw() + 
+  ylab("Number of Activity Chains") + 
+  xlab("") + 
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  labs(fill = "Current Activity")+ 
+  scale_fill_discrete(na.translate = F) + 
+  ggtitle("Activity Chain Alluvial",
+          "X denotes End of Activity Chain")
+
+```
+
+# Simulating Activity Chains Datasets
+
+We may choose to simulate an activity chains dataset. This is done by the function `run_chain_simulation()`. This function has an arguments for how many person:days should be generated (sim_count) as well as whether the dataset should be exported or whether the dataset should be passed directly into `create_sankey_data` and `create_plot_from_data` via the argument export_data_only. 
+
+
+The simulation is done via a multinomial draw. Proportional to the prevalence rate within the Activity Chains dataset. This means that if the "H" Chain has a 30% prevalence in the dataset, then the simulation assumes there is a 30% chance of drawing an Activity Chain of "H". 
+
+```{r}
+set.seed(1)
+run_chain_simulation(activity_chains_data, export_data_only = T, sim_count = 200) %>% # Simulate Dataset (200 Person Days)
+  filter(counts != 0) %>% # Filter out Activity Chains not simulated
+  uncount(counts) %>% # Data is sumulated in terms of counts. This expands the data to mimic the original Activity Chains dataset
+  mutate(string = as.character(Var1)) %>% # Relabel to match destination formatting
+  create_sankey_data() %>% # Create Sankey Data
+  create_plot_from_data() # Generate Sankey Plot
+
+set.seed(1)
+run_chain_simulation(activity_chains_data, export_data_only = F, sim_count = 200) # If the final outcome is the sankey plot, can generate directly within the function. 
+
+
+set.seed(1)
+run_chain_simulation(activity_chains_data, export_data_only = T, sim_count = 200) %>% # Same simulation, but using the alternative plotting format. 
+  filter(counts != 0) %>%
+  #select(Var1, counts) %>%
+  uncount(counts) %>%
+  mutate(string = as.character(Var1))%>%
+  group_by(string) %>%
+  dplyr::summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 30) %>%
+mutate(string = paste0(string, "X"), 
+       first_char = substr(string, 1, 1),
+       second_char = substr(string, 2, 2),
+       third_char = substr(string, 3, 3),
+       fourth_char = substr(string, 4, 4),
+       fifth_char = substr(string, 5, 5),
+       sixth_char = substr(string, 6, 6),
+       seventh_char = substr(string, 7, 7),
+       eigth_char = substr(string, 8, 8)) %>%
+  filter(first_char == "H") %>%
+  to_lodes_form(key = "string", axes = c("first_char", "second_char",
+                                         "third_char", "fourth_char",
+                                         "fifth_char")) %>%
+  mutate(stratum = factor(stratum, levels = c("H", "O", "W", "T", "X"))) %>%
+  ggplot(aes(x = string, y = n, stratum = stratum, alluvium = alluvium, label = stratum)) + 
+  geom_flow(aes(fill = stratum)) +
+  geom_stratum() + geom_text(stat = "stratum") +
+  theme_bw() + 
+  ylab("Number of Activity Chains") + 
+  xlab("") + 
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  labs(fill = "Current Activity")+ 
+  scale_fill_discrete(na.translate = F) + 
+  ggtitle("Activity Chain Alluvial",
+          "X denotes End of Activity Chain")
+
+```
+
+
+
+# Weekday vs Weekend Example Analysis
+
+Comparing Weekday vs Weekends. 
+
+## V1 - Faceting in GGPlot
+
+```{r}
+activity_chains_data %>%
+  mutate(dow = weekdays(start_date),
+         weekend_fac = case_when(dow %in% c("Saturday", "Sunday") ~ "Weekend",
+                             TRUE ~ "Weekday")) %>%
+  group_by(weekend_fac, string) %>%
+  dplyr::summarize(n = n()) %>%
+  arrange(desc(n)) %>%
+  slice_head(n = 30) %>%
+  ungroup() %>%
+  #group_by(string) %>%
+  dplyr::group_by(weekend_fac) %>%
+  #dplyr::summarize(tot_n = sum(n))
+  dplyr::mutate(perc = n/sum(n)*100,
+         tot_n = sum(n)) %>% 
+mutate(string = paste0(string, "X"), 
+       first_char = substr(string, 1, 1),
+       second_char = substr(string, 2, 2),
+       third_char = substr(string, 3, 3),
+       fourth_char = substr(string, 4, 4),
+       fifth_char = substr(string, 5, 5),
+       sixth_char = substr(string, 6, 6),
+       seventh_char = substr(string, 7, 7),
+       eigth_char = substr(string, 8, 8)) %>%
+  filter(first_char == "H") %>%
+  to_lodes_form(key = "string", axes = c("first_char", "second_char",
+                                         "third_char", "fourth_char",
+                                         "fifth_char")) %>%
+  mutate(stratum = factor(stratum, levels = c("H", "O", "W", "T", "X"))) %>%
+  ggplot(aes(x = string, y = perc, stratum = stratum, alluvium = alluvium, label = stratum)) + 
+  geom_flow(aes(fill = stratum)) +
+  geom_stratum() + geom_text(stat = "stratum") +
+  theme_bw() + 
+  ylab("Perc of Activity Chains") + 
+  xlab("") + 
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank()) + 
+  labs(fill = "Current Activity")+ 
+  scale_fill_discrete(na.translate = F) + 
+  ggtitle("Activity Chain Alluvial",
+          "X denotes End of Activity Chain") +
+  facet_wrap(~weekend_fac)
+
+```
+
+
+## V2 - Preprocess data
+
+### Weekday Only
+
+```{r}
+activity_chains_data %>%
+  mutate(dow = weekdays(start_date),
+         weekend_fac = case_when(dow %in% c("Saturday", "Sunday") ~ "Weekend",
+                             TRUE ~ "Weekday")) %>%
+  filter(weekend_fac == "Weekday") %>%
+  create_sankey_data(lower_limit = 0.02) %>% # Create Sankey Data
+  create_plot_from_data()
+
+```
+
+
+### Weekend Only
+
+```{r}
+activity_chains_data %>%
+  mutate(dow = weekdays(start_date),
+         weekend_fac = case_when(dow %in% c("Saturday", "Sunday") ~ "Weekend",
+                             TRUE ~ "Weekday")) %>%
+  filter(weekend_fac == "Weekend") %>%
+  create_sankey_data(lower_limit = 0.02) %>% # Create Sankey Data
+  create_plot_from_data()
+
+```

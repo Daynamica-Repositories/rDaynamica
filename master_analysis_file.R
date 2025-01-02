@@ -417,10 +417,7 @@ limit_tod <- c(0, 24)/24 # Display all hours
 # 
 # activity_palette <- c(wes_palette("Zissou1", 1),
 #                       wes_palette("Zissou1", 5)[4:5],
-#                       "#679669", # Green
-#                       "#876796", # Purple
-#                       "#96676F", # Dark red purple
-#                       rev(wes_palette("Royal1", 4)[c(4)]),
+#                       rev(wes_palette("Royal1", 4)[2:4]),
 #                       wes_palette("Moonrise3", 2),
 #                       wes_palette("GrandBudapest2"),
 #                       wes_palette("GrandBudapest1"),
@@ -580,7 +577,7 @@ data_names = c("Weekdays",
 module_3_results_location <- "./outputs/plot-gif/"
 dir.create(module_3_results_location)
 
-module_3_sub_analysis_location <- "./outputs/plot-gif/dow_viz/"
+module_3_sub_analysis_location <- "./outputs/plot-gif/dow_viz2/"
 
 
 dir.create(module_3_sub_analysis_location)
@@ -595,6 +592,18 @@ create_individual_plots(data_list,
                         width = 14,
                         height = 7)
 
+module_3_sub_analysis_location <- "./outputs/plot-gif/dow_viz3/"
+
+
+dir.create(module_3_sub_analysis_location)
+
+create_individual_plots(data_list,
+                        data_names = c("", ""),
+                        location = module_3_sub_analysis_location,
+                        nrow = 1, 
+                        ncol = 2,
+                        width = 14,
+                        height = 7)
 # Stitching the pngs into a gif. 
 png_files <- paste0(module_3_sub_analysis_location, list.files(path = module_3_sub_analysis_location, pattern = ".png"))
 
@@ -613,7 +622,29 @@ create_individual_plots(list(step_data_15_min_all_data),
                         ncol = 1,
                         width = 7,
                         height = 7)
-
+create_individual_plots(list(step_data_15_min_all_data),
+                        data_names = "",
+                        location = module_3_sub_analysis_location,
+                        nrow = 1, 
+                        ncol = 1,
+                        width = 7,
+                        height = 7)
 png_files <- paste0(module_3_sub_analysis_location, list.files(path = module_3_sub_analysis_location, pattern = ".png"))
 gif_file2 <- paste0(module_3_results_location, "/ucal_chord_diagram_visualization_all_data_visualization.gif")
 gifski(png_files, gif_file2, width = 800, height = 800, delay = 1.25)
+
+
+
+##################################
+### Module #4: Activity Chains ###
+##################################
+
+param_list <- list(# Data Import and Report Headers
+  daynamica_data = csv_dict_sub,
+  report_author = "Daynamica Team",
+  report_title = "Daynamica Activity Chains Example"
+  )
+
+render("analysis_modules/activity_chains_module.Rmd", output_file = "../outputs/Module 4/Activity Chains Module Example",
+       params = param_list,
+       env = new.env())
