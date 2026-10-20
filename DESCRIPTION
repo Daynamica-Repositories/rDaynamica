@@ -1,0 +1,45 @@
+Package: rDaynamica
+Type: Package
+Title: Standard Analysis Tools and Workflow for Daynamica Data
+Version: 0.1.0
+Authors@R: c(
+    person("Andrew", "Becker", email = "becke617@umn.edu", role = c("aut")),
+    person("Yaxuan", "Zhang", role = c("aut")),
+    person("Yingling", "Fan", role = c("aut", "cph")),
+    person("Ying", "Song", role = c("aut"))
+  )
+Description: Provides a comprehensive set of functions, data processing pipelines,
+    and standardized report templates to import, clean, visualize, and summarize
+    data from the Daynamica smartphone application.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3
+Imports:
+    rmarkdown,
+    dplyr,
+    data.table,
+    cli,
+    plyr,
+    openxlsx,
+    tidyr,
+    ggplot2,
+    tibble,
+    lubridate,
+    stringr,
+    tweenr,
+    circlize,
+    gifski,
+    plotly,
+    htmlwidgets,
+    sf,
+    geosphere,
+    gepaf,
+    sfdep,
+    ggnewscale,
+    wesanderson,
+    networkD3,
+    ggalluvial
+Suggests:
+    knitr,
+    testthat
