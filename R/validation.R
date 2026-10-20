@@ -114,6 +114,7 @@ filter_valid_days <- function(csv_dict, query_text) {
     dplyr::filter(type_decoded == 'ACTIVITY')
 
   if (!is.null(csv_dict[['ema_survey']])) {
+    csv_dict[['ema_survey']] <- data.table::copy(data.table::as.data.table(csv_dict[['ema_survey']]))
     if ('ema_survey_date' %in% names(csv_dict[['ema_survey']])) {
       csv_dict[['ema_survey']][, start_date := as.Date(ema_survey_date)]
     }
@@ -122,6 +123,13 @@ filter_valid_days <- function(csv_dict, query_text) {
   }
 
   if (!is.null(csv_dict[['calendar_item_survey']])) {
+    # Raw exports name these columns calendar_item_id / calendar_item_timestamp
+    csv_dict[['calendar_item_survey']] <- data.table::copy(data.table::as.data.table(csv_dict[['calendar_item_survey']]))
+    data.table::setnames(csv_dict[['calendar_item_survey']],
+                         old = c("calendar_item_id", "calendar_item_timestamp"),
+                         new = c("cal_item_id", "start_timestamp"),
+                         skip_absent = TRUE)
+
     csv_dict_sub[['calendar_item_survey']] <- data.table::copy(query_valid_days_func(
       csv_dict, 'calendar_item_survey',
       query_text = '!is.na(id)',
