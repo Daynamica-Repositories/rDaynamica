@@ -69,7 +69,6 @@ library(networkD3)
 library(dplyr)
 library(stringr)
 library(tidyr)
-library(webshot)
 library(lubridate)
 ```
 

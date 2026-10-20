@@ -30,27 +30,46 @@ Running a full Daynamica data analysis pipeline is straightforward. See `example
 ```r
 library(rDaynamica)
 
-# 1. Import Daynamica datasets from CSV directory
-csv_dict <- path2dict(folder_path = "data/anonymized_data", file_prefix = "anonymized_")
+# 1. Import Daynamica datasets from CSV directory (sample data ships with the package)
+data_path <- system.file("extdata", "anonymized_data", package = "rDaynamica")
+csv_dict <- path2dict(folder_path = data_path, file_prefix = "anonymized_")
 
 # 2. Preprocess & Clean Data
 csv_dict <- ucal_items_version_updater(csv_dict)
 csv_dict$ucalitems$cal_item_id <- as.integer(csv_dict$ucalitems$cal_item_id)
 csv_dict[['ucalitems']] <- assign_trip_purpose(csv_dict[['ucalitems']])
 
+# Join calendar item survey responses
+csv_dict[['ucalitems_survey']] <- survey_join_id(csv_dict[['calendar_item_survey']], csv_dict[['ucalitems']])
+csv_dict[['ucalitems_ljoin_ucisurvey']] <- ucalitems_ljoin_ucisurvey(csv_dict[['ucalitems_survey']], csv_dict[['ucalitems']])
+
 # 3. Split multiday items & filter valid days (>= 12 hours)
 csv_dict[['ucalitems_ljoin_ucisurvey_split']] <- split_ucalitems(
-  csv_dict[['ucalitems']],
+  csv_dict[['ucalitems_ljoin_ucisurvey']],
   local_timezone = 'US/Central',
   day_start_hour = 0
 )
 csv_dict[['day_summary']] <- get_per_day_duration(csv_dict[['ucalitems_ljoin_ucisurvey_split']])
 csv_dict_sub <- filter_valid_days(csv_dict, query_text = "(interact_with_app>0)&(with_subtype>=12)")
 
-# 4. Run Analysis Modules
+# 4. Group subtypes into a few categories (required for the chord diagram)
+recat <- c(
+  "CAR - DRIVER" = "MOTORIZED TRIP", "CAR - PASSENGER" = "MOTORIZED TRIP",
+  "OTHER TRIPS" = "MOTORIZED TRIP", "RAIL" = "MOTORIZED TRIP", "BUS" = "MOTORIZED TRIP",
+  "TAXI/UBER/LYFT" = "MOTORIZED TRIP", "VEHICLE" = "MOTORIZED TRIP",
+  "WAIT" = "NON-MOTORIZED TRIP", "WALK" = "NON-MOTORIZED TRIP", "BIKE" = "NON-MOTORIZED TRIP",
+  "HOME" = "HOME", "WORKPLACE" = "WORK", "FOOD & MEAL" = "EAT OUT",
+  "SHOPPING ERRANDS" = "SHOP", "UNKNOWN" = "MISSING",
+  "CARE GIVING" = "OTHER", "CIVIL ERRANDS" = "OTHER", "COMMUNITY & CULTURAL" = "OTHER",
+  "EDUCATION" = "OTHER", "FUN & LEISURE" = "OTHER", "MEDICAL & FITNESS" = "OTHER",
+  "OTHER ACTIVITIES" = "OTHER", "RELIGIOUS & SPIRITUAL" = "OTHER"
+)
+csv_dict_new_cat <- recategorize_calendar_items(csv_dict_sub, orig_cats = names(recat), new_cats = unname(recat))
+
+# 5. Run Analysis Modules
 run_standard_analysis(csv_dict_sub, output_dir = "outputs/primary_analysis")
-run_visualization_report(csv_dict_sub, output_dir = "outputs/ucal_visualization")
-generate_chord_diagram_gif(csv_dict_sub, output_dir = "outputs/plot-gif")
+run_visualization_report(csv_dict_new_cat, output_dir = "outputs/ucal_visualization")
+generate_chord_diagram_gif(csv_dict_new_cat, output_dir = "outputs/plot-gif")
 run_activity_chains_report(csv_dict_sub, output_dir = "outputs/Module_4")
 ```
 

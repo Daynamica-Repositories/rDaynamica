@@ -42,6 +42,10 @@ library(lubridate)
 library(ggnewscale)
 library(wesanderson)
 daynamica_data <- params$daynamica_data
+user_id_list <- params$user_id_list
+if (is.null(user_id_list)) {
+  user_id_list <- unique(daynamica_data$day_summary$user_id)
+}
 if(is.null(params$color_codings)){
 
 
@@ -86,8 +90,8 @@ if(is.null(params$limit_tod)){
   min_time = 0
   max_time = 1
 } else{
-  min_time <- limit_tod[1]
-  max_time <- limit_tod[2]
+  min_time <- params$limit_tod[1]
+  max_time <- params$limit_tod[2]
 }
 ```
 

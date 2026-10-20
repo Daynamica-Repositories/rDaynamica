@@ -52,10 +52,8 @@ library(dplyr)
 library(data.table)
 
 if (params$export_results) {
-  output_subfolder_name <- paste0(params$output_location, paste0("/results"))
-
-  main_dir <- getwd()
-  result_location <- file.path(main_dir, output_subfolder_name)
+  output_location <- if (is.null(params$output_location)) getwd() else params$output_location
+  result_location <- file.path(output_location, "results")
   if (!dir.exists(result_location)) {
     dir.create(result_location, recursive = TRUE)
   }
@@ -431,10 +429,9 @@ temporary_table <- data %>%
           start_timestamp) %>%
   mutate(activity_indicator = ifelse(type_decoded == "ACTIVITY", 1, 0)) %>%
   mutate(trip_id = cumsum(activity_indicator)) %>%
-  select(user_id, start_date,
+  select(id, user_id, start_date,
          start_time, end_time,
          type_decoded, subtype_decoded,
-         type_decoded_pre, type_decoded_next,
          trip_purpose, trip_id,
          distance_after_split, duration_after_split,
          IsWeekend) %>%

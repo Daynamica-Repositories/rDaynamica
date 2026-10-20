@@ -22,6 +22,8 @@ run_standard_analysis <- function(daynamica_data,
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
+  # render() runs from the template's folder, so relative paths must be resolved here
+  output_dir <- normalizePath(output_dir, winslash = "/")
 
   rmd_template <- system.file("rmd", "standard_daynamica_analysis_module.Rmd", package = "rDaynamica")
   if (rmd_template == "" || !file.exists(rmd_template)) {
@@ -80,6 +82,8 @@ run_visualization_report <- function(daynamica_data,
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
+  # render() runs from the template's folder, so relative paths must be resolved here
+  output_dir <- normalizePath(output_dir, winslash = "/")
 
   rmd_template <- system.file("rmd", "calendar_item_visualization_module.Rmd", package = "rDaynamica")
   if (rmd_template == "" || !file.exists(rmd_template)) {
@@ -132,6 +136,8 @@ generate_chord_diagram_gif <- function(daynamica_data,
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
+  # render() runs from the template's folder, so relative paths must be resolved here
+  output_dir <- normalizePath(output_dir, winslash = "/")
 
   frame_dir <- file.path(output_dir, "frames")
   if (!dir.exists(frame_dir)) {
@@ -140,12 +146,20 @@ generate_chord_diagram_gif <- function(daynamica_data,
 
   seq_data <- generate_sequence_data(daynamica_data$ucalitems_temporal_plot, unit_length = unit_length)
   vector_length <- length(seq_data$id_key$letters_subtype)
+  chord_palette <- c("#80B1D3", "#BC80BD", "#FB8072", "#FCCDE5", "#FDB462", "#B3DE69", "#FFFFB3",
+                     "#8DD3C7", "#BEBADA", "#D9D9D9", "#CCEBC5", "#FFED6F")
+  if (vector_length > length(chord_palette)) {
+    cli::cli_abort(c(
+      "The chord diagram supports at most {length(chord_palette)} subtype categories, but the data has {vector_length}.",
+      "i" = "Use {.fn recategorize_calendar_items} to group subtypes into fewer categories."
+    ))
+  }
 
   category_data <- data.frame(
     label = seq_data$id_key$letters_subtype,
     subtype = seq_data$id_key$subtype_decoded,
     order = seq_len(vector_length),
-    color = c("#80B1D3", "#BC80BD", "#FB8072", "#FCCDE5", "#FDB462", "#B3DE69", "#FFFFB3")[1:vector_length],
+    color = chord_palette[seq_len(vector_length)],
     stringsAsFactors = FALSE
   )
 
@@ -189,6 +203,8 @@ run_activity_chains_report <- function(daynamica_data,
   if (!dir.exists(output_dir)) {
     dir.create(output_dir, recursive = TRUE)
   }
+  # render() runs from the template's folder, so relative paths must be resolved here
+  output_dir <- normalizePath(output_dir, winslash = "/")
 
   rmd_template <- system.file("rmd", "activity_chains_module.Rmd", package = "rDaynamica")
   if (rmd_template == "" || !file.exists(rmd_template)) {

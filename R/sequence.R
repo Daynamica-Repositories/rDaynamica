@@ -10,6 +10,13 @@ generate_sequence_data <- function(dataset, unit_length = 5) {
   if (1440 %% unit_length != 0) {
     stop("Please select a unit_length that divides evenly into 1440 minutes (e.g. 1, 2, 3, 5, 10, 15, 20, 30, 60).")
   }
+  if (any(dataset$subtype < 1 | dataset$subtype > length(letters), na.rm = TRUE)) {
+    cli::cli_abort(c(
+      "{.field subtype} must be integer codes from 1 to {length(letters)}.",
+      "i" = "Raw Daynamica subtype codes start at 0 and overlap between activities and trips.",
+      "i" = "Run {.fn recategorize_calendar_items} first to assign consistent codes."
+    ))
+  }
 
   long_sequence_data <- dataset %>%
     tibble::as_tibble() %>%
