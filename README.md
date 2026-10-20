@@ -11,8 +11,8 @@ An R package designed to process, analyze, and visualize data collected from the
 You can install `rDaynamica` directly in R using `devtools` or `remotes`:
 
 ```r
-# install.packages("devtools")
-devtools::install_github("Daynamica/rDaynamica")
+# install.packages("pak")
+pak::pak("Daynamica/rDaynamica")
 ```
 
 Or load the functions locally during research development:
