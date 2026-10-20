@@ -1,6 +1,4 @@
 # Export all functions matching pattern
 exportPattern("^[[:alpha:]]+")
-import(dplyr)
-import(data.table)
-import(ggplot2)
-import(rmarkdown)
+importFrom(dplyr, "%>%")
+importFrom(data.table, ":=", ".I", ".N", ".SD")
