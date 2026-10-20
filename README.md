@@ -12,7 +12,7 @@ You can install `rDaynamica` directly in R using `devtools` or `remotes`:
 
 ```r
 # install.packages("pak")
-pak::pak("Daynamica/rDaynamica")
+pak::pak("Daynamica-Repositories/rDaynamica")
 ```
 
 Or load the functions locally during research development:
