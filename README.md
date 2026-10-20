@@ -84,9 +84,30 @@ run_activity_chains_report(csv_dict_sub, output_dir = "outputs/Module_4")
 
 ---
 
+## Working with Survey Responses
+
+Daynamica collects two kinds of surveys: calendar item surveys about specific activities and trips, and end-of-day (EMA) surveys.
+
+```r
+# One clean row per answer: multi-select options as a list, ratings as numbers
+cis_tidy <- tidy_calendar_item_survey(csv_dict_sub$calendar_item_survey)
+ema_tidy <- tidy_ema_survey(csv_dict_sub$ema_survey)
+
+# Every question with the options chosen, response counts, and shares
+survey_codebook(cis_tidy)
+
+# Wide tables (one row per surveyed item or EMA submission), and survey
+# answers joined to each activity and trip
+csv_dict_sub <- process_surveys(csv_dict_sub)
+csv_dict_sub$ucal_items_temporal_plot_with_survey_data
+```
+
+---
+
 ## Package Structure
 
-- **`R/`**: Package functions (`io.R`, `preprocess.R`, `validation.R`, `summary.R`, `temporal_plot.R`, `sequence.R`, `chord_diagram.R`, `modules.R`).
+- **`R/`**: Package functions (`io.R`, `preprocess.R`, `validation.R`, `summary.R`, `temporal_plot.R`, `sequence.R`, `chord_diagram.R`, `survey.R`, `modules.R`).
+- **`tests/`**: Automated tests (`testthat`).
 - **`inst/rmd/`**: Standalone RMarkdown analysis module templates.
 - **`inst/extdata/`**: Sample anonymized dataset for testing and quickstart tutorials.
 - **`examples/`**: `master_analysis_file.R` showing example workflow execution.
