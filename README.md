@@ -81,6 +81,7 @@ run_activity_chains_report(csv_dict_sub, output_dir = "outputs/Module_4")
 2. **`run_visualization_report()`**: Produces detailed multi-day participant timeline plots of calendar items.
 3. **`generate_chord_diagram_gif()`**: Constructs animated chord diagram GIFs showcasing transition flow rates between activities/trips over time.
 4. **`run_activity_chains_report()`**: Tutorial and analysis report for extracting activity sequence chains (e.g. `H -> T -> W -> T -> H`) and generating Sankey diagrams.
+5. **`run_survey_report()`**: Survey participation and response timing, every survey question with its answers, comparisons across activity types and travel modes, and end-of-day answers alongside recorded behavior. Built from the questions in the data, so it works for any study's surveys.
 
 ---
 
@@ -100,13 +101,29 @@ survey_codebook(cis_tidy)
 # answers joined to each activity and trip
 csv_dict_sub <- process_surveys(csv_dict_sub)
 csv_dict_sub$ucal_items_temporal_plot_with_survey_data
+
+# Compare answers across activities and trips (trip_mode is a trip's main mode)
+items <- csv_dict_sub$ucalitems_temporal_plot
+summarize_survey_by(cis_tidy, items, by = "trip_mode", measure = "mean")
+summarize_survey_by(cis_tidy, items, by = "subtype_decoded", measure = "share")
+
+# How often activities and trips were surveyed, and how soon
+survey_response_rates(items, cis_tidy, by = "type_decoded")
+
+# End-of-day answers next to each day's recorded behavior
+join_ema_to_days(ema_tidy, csv_dict_sub$day_summary)
+
+# Or all of the above as an HTML report
+run_survey_report(csv_dict_sub, output_dir = "outputs/survey_analysis")
 ```
+
+Calendar item IDs are occasionally reused for a later item, so surveys are matched to the item whose start time is closest to the start time recorded with the survey.
 
 ---
 
 ## Package Structure
 
-- **`R/`**: Package functions (`io.R`, `preprocess.R`, `validation.R`, `summary.R`, `temporal_plot.R`, `sequence.R`, `chord_diagram.R`, `survey.R`, `modules.R`).
+- **`R/`**: Package functions (`io.R`, `preprocess.R`, `validation.R`, `summary.R`, `temporal_plot.R`, `sequence.R`, `chord_diagram.R`, `survey.R`, `survey_summary.R`, `modules.R`).
 - **`tests/`**: Automated tests (`testthat`).
 - **`inst/rmd/`**: Standalone RMarkdown analysis module templates.
 - **`inst/extdata/`**: Sample anonymized dataset for testing and quickstart tutorials.

@@ -229,3 +229,68 @@ run_activity_chains_report <- function(daynamica_data,
   cli::cli_alert_success("Activity Chains report generated at: {output_file}")
   return(output_file)
 }
+
+#' Run Survey Analysis Module
+#'
+#' Renders an HTML report summarizing calendar item surveys and end-of-day
+#' (EMA) surveys: participation and response timing, every question with its
+#' answers, comparisons across activity types and travel modes, and EMA answers
+#' alongside the behavior recorded on the same day. The report is built from
+#' the questions found in the data, so it works for any study's surveys.
+#'
+#' @param daynamica_data Preprocessed Daynamica data list dictionary output from
+#'   filtering (needs `ucalitems_temporal_plot` and `day_summary`, plus
+#'   `calendar_item_survey` and/or `ema_survey`).
+#' @param output_dir Directory where output report is saved.
+#' @param file_name Output HTML filename (without extension).
+#' @param report_author Author name string.
+#' @param report_title Title string.
+#' @param min_responses Groups with fewer responses (or EMA answers with fewer
+#'   matched days) than this are left out of comparisons.
+#' @param scale_labels Optional named list of labels for rating scale values,
+#'   keyed by question, e.g. `list(Q5 = c("1" = "Very poor", "5" = "Excellent"))`.
+#' @return Output file path string.
+#' @export
+run_survey_report <- function(daynamica_data,
+                              output_dir = "outputs/survey_analysis",
+                              file_name = "survey_analysis_result",
+                              report_author = "Daynamica Team",
+                              report_title = "Daynamica Survey Report",
+                              min_responses = 20,
+                              scale_labels = NULL) {
+
+  if (is.null(daynamica_data$calendar_item_survey) && is.null(daynamica_data$ema_survey)) {
+    cli::cli_abort("{.arg daynamica_data} has no {.field calendar_item_survey} or {.field ema_survey} table.")
+  }
+
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+  # render() runs from the template's folder, so relative paths must be resolved here
+  output_dir <- normalizePath(output_dir, winslash = "/")
+
+  rmd_template <- system.file("rmd", "survey_module.Rmd", package = "rDaynamica")
+  if (rmd_template == "" || !file.exists(rmd_template)) {
+    rmd_template <- file.path("inst", "rmd", "survey_module.Rmd")
+  }
+
+  output_file <- file.path(output_dir, paste0(file_name, ".html"))
+
+  param_list <- list(
+    daynamica_data = daynamica_data,
+    report_author = report_author,
+    report_title = report_title,
+    min_responses = min_responses,
+    scale_labels = scale_labels
+  )
+
+  rmarkdown::render(
+    input = rmd_template,
+    output_file = output_file,
+    params = param_list,
+    envir = new.env(parent = globalenv())
+  )
+
+  cli::cli_alert_success("Survey report generated at: {output_file}")
+  return(output_file)
+}

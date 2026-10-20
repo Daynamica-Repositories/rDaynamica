@@ -1,7 +1,9 @@
 #' Tidy Calendar Item Survey Responses
 #'
 #' Cleans the raw calendar item survey export into one row per surveyed
-#' calendar item and question. Multi-select answers are split into a list of
+#' calendar item and question. Calendar item IDs are occasionally reused for a
+#' later item; answers whose item start times are more than 3 days apart are
+#' treated as belonging to different items. Multi-select answers are split into a list of
 #' options (commas inside parentheses are kept as part of an option label),
 #' option labels are trimmed and given consistent capitalization, repeated
 #' values such as "2, 2" are collapsed, single-choice answers that are numbers
@@ -30,9 +32,13 @@ tidy_calendar_item_survey <- function(calendar_item_survey) {
 
   dt <- tidy_survey_core(dt, id_cols = c("study_id", "user_id", "cal_item_id", "start_timestamp"))
 
-  data.table::setorder(dt, user_id, cal_item_id, question_id, -response_timestamp)
-  dt <- unique(dt, by = c("user_id", "cal_item_id", "question_id"))
-  data.table::setorder(dt, user_id, cal_item_id, question_id)
+  # Item IDs are occasionally reused for a later item, so only answers for the
+  # same item instance count as repeats
+  add_item_instance(dt, "start_timestamp")
+  data.table::setorder(dt, user_id, cal_item_id, item_instance, question_id, -response_timestamp)
+  dt <- unique(dt, by = c("user_id", "cal_item_id", "item_instance", "question_id"))
+  dt[, item_instance := NULL]
+  data.table::setorder(dt, user_id, cal_item_id, start_timestamp, question_id)
   dt
 }
 
@@ -98,10 +104,11 @@ survey_codebook <- function(survey) {
   codebook <- merge(questions, options, by = "question_id")
   codebook[, share := n / question_responses]
 
-  # Numeric scales read in order; other options from most to least common
-  codebook[, numeric_option := suppressWarnings(as.numeric(option))]
+  # Numeric scales (including top-coded answers like "12+") read in order;
+  # other options from most to least common
+  codebook[, numeric_option := suppressWarnings(as.numeric(sub("^\\s*(-?[0-9]+(\\.[0-9]+)?).*$", "\\1", option)))]
   codebook[, sort_key := if (all(!is.na(numeric_option))) numeric_option else -as.numeric(n), by = question_id]
-  data.table::setorder(codebook, question_id, sort_key)
+  data.table::setorder(codebook, question_id, sort_key, option)
 
   codebook[, .(question_id, question_text, question_type, option, n, share, question_responses, participants)]
 }
@@ -123,23 +130,22 @@ process_surveys <- function(dict_tables) {
 
     calendar_item_question_dict <- survey_question_dict(tidy)
 
-    item_cols <- intersect(c("study_id", "user_id", "cal_item_id"), names(tidy))
-    item_times <- tidy[, .(survey_timestamp = start_timestamp[1],
-                           survey_response_timestamp = max(response_timestamp)),
-                       by = c("user_id", "cal_item_id")]
-    wide_calendar_item_survey_table <- merge(
-      item_times,
-      widen_survey(tidy, item_cols),
-      by = c("user_id", "cal_item_id")
-    )
+    # One wide row per surveyed item instance
+    tidy_instances <- data.table::copy(tidy)
+    add_item_instance(tidy_instances, "start_timestamp")
+    item_cols <- intersect(c("study_id", "user_id", "cal_item_id", "item_instance"), names(tidy_instances))
+    item_times <- tidy_instances[, .(survey_timestamp = min(start_timestamp),
+                                     survey_response_timestamp = max(response_timestamp)),
+                                 by = c("user_id", "cal_item_id", "item_instance")]
+    wide <- merge(item_times, widen_survey(tidy_instances, item_cols),
+                  by = c("user_id", "cal_item_id", "item_instance"))
 
-    ucal_items_temporal_plot_with_survey_data <- merge(
-      data.table::as.data.table(dict_tables$ucalitems_temporal_plot),
-      wide_calendar_item_survey_table[, setdiff(names(wide_calendar_item_survey_table), "study_id"), with = FALSE],
-      by = c("user_id", "cal_item_id"),
-      all.x = TRUE,
-      sort = FALSE
+    ucal_items_temporal_plot_with_survey_data <- join_wide_survey_to_items(
+      dict_tables$ucalitems_temporal_plot,
+      wide[, setdiff(names(wide), "study_id"), with = FALSE]
     )
+    wide[, item_instance := NULL]
+    wide_calendar_item_survey_table <- wide
 
     dict_tables[c("calendar_item_survey_tidy",
                   "ucal_items_temporal_plot_with_survey_data",
@@ -241,6 +247,63 @@ first_survey_timestamp <- function(x) {
   millis <- suppressWarnings(as.numeric(first))
   if (all(is.na(first) | !is.na(millis))) return(millis)
   as.POSIXct(first, tz = "UTC", tryFormats = c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%Y-%m-%d"))
+}
+
+# Calendar item IDs are occasionally reused for a later item. Rows of the same
+# item, including the segments of an item split across midnight, are never
+# more than this far apart.
+item_instance_gap_ms <- 72 * 3.6e6
+
+# Number the distinct items sharing a user and item ID, by time (modifies dt)
+add_item_instance <- function(dt, time_col) {
+  data.table::setorderv(dt, c("user_id", "cal_item_id", time_col))
+  dt[, item_instance := cumsum(c(TRUE, diff(get(time_col)) > item_instance_gap_ms)), by = c("user_id", "cal_item_id")]
+  invisible(dt)
+}
+
+# For each key (user_id, cal_item_id, start_timestamp from the survey), the
+# item instance with the nearest start time
+match_item_instance <- function(keys, instances) {
+  inst <- data.table::copy(instances)[, .(user_id, cal_item_id, instance = item_instance, match_time = instance_start)]
+  k <- unique(data.table::copy(keys)[, .(user_id, cal_item_id, start_timestamp)])[, match_time := start_timestamp]
+  matched <- inst[k, on = c("user_id", "cal_item_id", "match_time"), roll = "nearest"]
+  matched[, .(user_id, cal_item_id, start_timestamp, item_instance = instance)]
+}
+
+# Item instances in a calendar items table, with each row's instance
+item_row_instances <- function(items) {
+  it <- data.table::copy(data.table::as.data.table(items))
+  it[, .item_row := .I]
+  add_item_instance(it, "start_timestamp")
+  it[, instance_start := min(start_timestamp), by = c("user_id", "cal_item_id", "item_instance")]
+  it
+}
+
+# Join one-row-per-item survey answers to every row of a calendar items table
+join_wide_survey_to_items <- function(items, wide) {
+  items_dt <- data.table::as.data.table(items)
+  if (!"start_timestamp" %in% names(items_dt)) {
+    wide <- wide[, setdiff(names(wide), "item_instance"), with = FALSE]
+    return(merge(items_dt, wide, by = c("user_id", "cal_item_id"), all.x = TRUE, sort = FALSE))
+  }
+
+  it <- item_row_instances(items_dt)
+  instances <- unique(it[, .(user_id, cal_item_id, item_instance, instance_start)])
+  matched <- match_item_instance(wide[, .(user_id, cal_item_id, start_timestamp = survey_timestamp)], instances)
+  wide <- merge(wide[, setdiff(names(wide), "item_instance"), with = FALSE],
+                matched, by.x = c("user_id", "cal_item_id", "survey_timestamp"),
+                by.y = c("user_id", "cal_item_id", "start_timestamp"))
+  # If two surveyed instances matched the same item, keep the closer one
+  wide <- merge(wide[!is.na(item_instance)], instances, by = c("user_id", "cal_item_id", "item_instance"))
+  wide[, .distance := abs(survey_timestamp - instance_start)]
+  data.table::setorder(wide, user_id, cal_item_id, item_instance, .distance)
+  wide <- unique(wide, by = c("user_id", "cal_item_id", "item_instance"))
+  wide[, c(".distance", "instance_start") := NULL]
+
+  joined <- merge(it, wide, by = c("user_id", "cal_item_id", "item_instance"), all.x = TRUE)
+  data.table::setorder(joined, .item_row)
+  joined[, c(".item_row", "item_instance", "instance_start") := NULL]
+  joined[]
 }
 
 survey_question_dict <- function(tidy) {

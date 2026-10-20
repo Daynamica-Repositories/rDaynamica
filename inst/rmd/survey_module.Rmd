@@ -1,0 +1,257 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: F
+    theme: journal
+    code_folding: hide
+params:
+  report_author: NULL
+  report_title: Daynamica Survey Report
+  daynamica_data: NULL
+  min_responses: 20
+  scale_labels: NULL
+editor_options:
+  chunk_output_type: console
+---
+
+---
+title: `r params$report_title`
+author: `r params$report_author`
+date: `r Sys.Date()`
+---
+
+<style type="text/css">
+.main-container {
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+```{r, message = F, warning = F}
+library(dplyr)
+library(ggplot2)
+library(data.table)
+
+# Functions are provided by rDaynamica package (R/survey.R and R/survey_summary.R)
+
+knitr::opts_chunk$set(echo = TRUE, fig.width = 10, fig.height = 5.5, message = F, warning = F)
+
+daynamica_data <- params$daynamica_data
+items <- daynamica_data$ucalitems_temporal_plot
+min_n <- params$min_responses
+scale_labels <- params$scale_labels
+
+has_cis <- !is.null(daynamica_data$calendar_item_survey) && !is.null(items)
+has_ema <- !is.null(daynamica_data$ema_survey)
+
+if (has_cis) {
+  cis <- rDaynamica::tidy_calendar_item_survey(daynamica_data$calendar_item_survey)
+  cis_linked <- rDaynamica::link_survey_to_items(cis, items)
+  cis_codebook <- rDaynamica::survey_codebook(cis)
+}
+if (has_ema) {
+  ema <- rDaynamica::tidy_ema_survey(daynamica_data$ema_survey)
+  ema_codebook <- rDaynamica::survey_codebook(ema)
+}
+
+pretty_label <- function(x) tools::toTitleCase(tolower(as.character(x)))
+short_text <- function(x, n = 50) ifelse(nchar(x) > n, paste0(substr(x, 1, n - 1), "…"), x)
+
+# Add scale labels (from the scale_labels parameter) to numeric answer options
+label_options <- function(question_id, option) {
+  labels <- scale_labels[[paste0("Q", question_id)]]
+  if (is.null(labels)) return(option)
+  ifelse(option %in% names(labels), paste0(option, " (", labels[option], ")"), option)
+}
+
+codebook_table <- function(codebook, q) {
+  codebook[question_id == q] %>%
+    transmute(Answer = label_options(q, option), Responses = n, Share = sprintf("%.1f%%", 100 * share)) %>%
+    knitr::kable()
+}
+
+is_rating <- function(codebook, q) {
+  options <- codebook[question_id == q, option]
+  all(codebook[question_id == q, question_type] == "single") && !anyNA(suppressWarnings(as.numeric(options)))
+}
+```
+
+# Overview
+
+This report summarizes the in-app surveys in a Daynamica dataset. Daynamica collects two kinds of surveys:
+
+* **Calendar item surveys** ask about a specific activity or trip, for example who the participant was with, how they felt, or how safe a trip felt.
+* **End-of-day (EMA) surveys** ask about the day as a whole, for example time spent working at home, online shopping, or unmet travel needs.
+
+Survey questions and answer options differ between studies, so this report is built from the questions found in the data. Rating questions (answers that are all numbers) are summarized with averages; other questions with the share of responses choosing each answer. Groups with fewer than `r min_n` responses are left out of the comparisons (set with the `min_responses` parameter).
+
+```{r}
+overview <- tibble(Measure = character(), Value = character())
+if (has_cis) {
+  overview <- bind_rows(overview, tibble(
+    Measure = c("Calendar item survey answers", "Surveyed activities and trips", "Participants with calendar item surveys"),
+    Value = format(c(nrow(cis_linked), nrow(unique(cis_linked[, .(user_id, cal_item_id, start_timestamp)])), uniqueN(cis_linked$user_id)), big.mark = ",")
+  ))
+}
+if (has_ema) {
+  overview <- bind_rows(overview, tibble(
+    Measure = c("EMA survey submissions", "Days with an EMA survey", "Participants with EMA surveys"),
+    Value = format(c(uniqueN(ema[, .(user_id, timestamp)]), uniqueN(ema[, .(user_id, start_date)]), uniqueN(ema$user_id)), big.mark = ",")
+  ))
+}
+knitr::kable(overview)
+```
+
+```{r, eval = has_cis, results = "asis"}
+cat("# Survey Participation {.tabset}\n\n")
+cat("Activities are counted individually; trips are counted as complete trips (all legs), since a trip's survey is attached to one of its legs.\n\n")
+```
+
+```{r, eval = has_cis, results = "asis"}
+cat("## Response Rates\n\n")
+rates <- rDaynamica::survey_response_rates(items, cis, by = "type_decoded")
+rates %>%
+  transmute(`Item Type` = pretty_label(type_decoded), Total = units, Surveyed = surveyed,
+            `Response Rate` = sprintf("%.1f%%", 100 * response_rate),
+            `Median Hours to Respond` = round(median_delay_hours, 1),
+            `90th Percentile Hours to Respond` = round(p90_delay_hours, 1)) %>%
+  knitr::kable() %>%
+  cat(sep = "\n")
+```
+
+```{r, eval = has_cis, results = "asis", fig.height = 4.5}
+cat("\n\n## Response Rates by Participant\n\n")
+cat("Each bar counts participants with a given share of their activities or trips surveyed.\n\n")
+participant_rates <- rDaynamica::survey_response_rates(items, cis, by = c("type_decoded", "user_id"))
+p <- participant_rates %>%
+  ggplot(aes(x = response_rate)) +
+  geom_histogram(binwidth = 0.1, boundary = 0, fill = "#4E79A7", color = "white") +
+  facet_wrap(~ pretty_label(type_decoded)) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "Share of items surveyed", y = "Participants") +
+  theme_minimal(base_size = 14)
+print(p)
+cat("\n\n")
+```
+
+```{r, eval = has_cis, results = "asis", fig.height = 4.5}
+cat("\n\n## Response Timing\n\n")
+cat("Hours between the start of an activity or trip and the participant's survey response, up to 96 hours. Participants sometimes adjust an item's times after answering, so a few delays are slightly negative.\n\n")
+units <- rDaynamica::survey_response_rates(items, cis, level = "unit")
+p <- units[surveyed == TRUE & response_delay_hours <= 96] %>%
+  ggplot(aes(x = response_delay_hours)) +
+  geom_histogram(binwidth = 4, boundary = 0, fill = "#4E79A7", color = "white") +
+  facet_wrap(~ pretty_label(type_decoded)) +
+  labs(x = "Hours from start of item to survey response", y = "Surveyed items") +
+  theme_minimal(base_size = 14)
+print(p)
+cat("\n\n")
+```
+
+```{r, eval = has_cis, results = "asis"}
+cat("\n\n# Calendar Item Survey Questions\n\n")
+cat("Each question is shown with its answers, then compared across activity types (for activity questions) or main travel modes (for trip questions). A trip's main mode is the mode of its longest leg.\n\n")
+
+question_items <- cis_linked[, .N, by = .(question_id, type_decoded)][order(question_id, -N)][, .SD[1], by = question_id]
+
+for (item_type in c("ACTIVITY", "TRIP")) {
+  questions <- question_items[type_decoded == item_type, question_id]
+  if (length(questions) == 0) next
+  cat("## ", pretty_label(item_type), " Questions {.tabset}\n\n", sep = "")
+  group_col <- if (item_type == "TRIP" && "trip_mode" %in% names(cis_linked)) "trip_mode" else "subtype_decoded"
+  group_name <- if (group_col == "trip_mode") "Main travel mode" else if (item_type == "TRIP") "Travel mode" else "Activity type"
+
+  for (q in questions) {
+    question_text <- cis_codebook[question_id == q, question_text][1]
+    cat("### Q", q, ": ", short_text(question_text), "\n\n", sep = "")
+    cat("**", question_text, "**\n\n", sep = "")
+    cat(codebook_table(cis_codebook, q), sep = "\n")
+    cat("\n\n")
+
+    if (is_rating(cis_codebook, q)) {
+      means <- rDaynamica::summarize_survey_by(cis, items, by = group_col, measure = "mean", questions = q, min_responses = min_n)
+      if (nrow(means) == 0) { cat("Not enough responses to compare groups.\n\n"); next }
+      p <- means %>%
+        ggplot(aes(x = mean, y = reorder(pretty_label(.data[[group_col]]), mean))) +
+        geom_col(fill = "#4E79A7") +
+        geom_text(aes(label = sprintf("%.2f (n = %d)", mean, responses)), hjust = -0.1, size = 4) +
+        scale_x_continuous(limits = c(0, max(as.numeric(cis_codebook[question_id == q, option])) * 1.2)) +
+        labs(x = "Average answer", y = group_name, title = "Average answer by group") +
+        theme_minimal(base_size = 14)
+      print(p)
+      cat("\n\n")
+
+      weekend <- rDaynamica::summarize_survey_by(cis, items, by = "IsWeekend", measure = "mean", questions = q, min_responses = min_n)
+      if (nrow(weekend) > 0) {
+        weekend %>%
+          transmute(`Day Type` = IsWeekend, Responses = responses, Average = round(mean, 2), SD = round(sd, 2)) %>%
+          knitr::kable() %>%
+          cat(sep = "\n")
+      }
+    } else {
+      shares <- rDaynamica::summarize_survey_by(cis, items, by = group_col, measure = "share", questions = q, min_responses = min_n)
+      if (nrow(shares) == 0) { cat("Not enough responses to compare groups.\n\n"); next }
+      option_order <- cis_codebook[question_id == q, option]
+      p <- shares %>%
+        mutate(group = paste0(pretty_label(.data[[group_col]]), " (n = ", responses, ")"),
+               option = factor(option, levels = rev(option_order))) %>%
+        ggplot(aes(x = group, y = option, fill = share)) +
+        geom_tile(color = "white") +
+        geom_text(aes(label = sprintf("%.0f%%", 100 * share)), size = 3.5) +
+        scale_fill_gradient(low = "#F1F5FA", high = "#2B5C8A", labels = scales::percent, limits = c(0, 1)) +
+        labs(x = group_name, y = NULL, fill = "Share of\nresponses", title = "Share of responses choosing each answer") +
+        theme_minimal(base_size = 13) +
+        theme(axis.text.x = element_text(angle = 35, hjust = 1), panel.grid = element_blank())
+      print(p)
+      cat("\n\n")
+    }
+    cat("\n\n")
+  }
+}
+```
+
+```{r, eval = has_ema, results = "asis"}
+cat("\n\n# End-of-Day (EMA) Survey Questions {.tabset}\n\n")
+cat("Each question is shown with its answers, then with the behavior recorded on days with each answer, for comparing self-reports with what the app recorded. If a participant submitted more than one EMA survey on a day, the latest submission is used.\n\n")
+
+day_summary <- data.table::as.data.table(daynamica_data$day_summary)
+ema_days <- rDaynamica::join_ema_to_days(ema, day_summary)
+latest <- ema[, .SD[timestamp == max(timestamp)], by = .(user_id, start_date)]
+answers_by_day <- latest[, .(option = unlist(response_options)), by = .(question_id, user_id, start_date)]
+answers_by_day <- merge(answers_by_day, day_summary[, .(user_id, start_date = as.Date(start_date), trip_count, activity_count, with_subtype)],
+                        by = c("user_id", "start_date"))
+
+cat("EMA answers were matched to ", format(nrow(ema_days), big.mark = ","), " days in the data.\n\n", sep = "")
+
+for (q in sort(unique(ema_codebook$question_id))) {
+  question_text <- ema_codebook[question_id == q, question_text][1]
+  cat("## Q", q, ": ", short_text(question_text), "\n\n", sep = "")
+  cat("**", question_text, "**\n\n", sep = "")
+  cat(codebook_table(ema_codebook, q), sep = "\n")
+  cat("\n\n")
+
+  behavior <- answers_by_day[question_id == q, .(Days = .N, `Trips per Day` = round(mean(trip_count), 2),
+                                                 `Activities per Day` = round(mean(activity_count), 2),
+                                                 `Hours Recorded` = round(mean(with_subtype), 1)), by = .(Answer = option)]
+  behavior <- behavior[Days >= min_n]
+  if (nrow(behavior) > 0) {
+    behavior <- behavior[order(match(Answer, ema_codebook[question_id == q, option]))]
+    behavior[, Answer := label_options(q, Answer)]
+    cat("Recorded behavior on days with each answer:\n\n")
+    cat(knitr::kable(behavior), sep = "\n")
+  } else {
+    cat("Not enough matched days to compare answers.\n\n")
+  }
+  cat("\n\n")
+}
+```
+
+# Notes
+
+* **Scale meanings:** the data does not record what the ends of each rating scale mean. Pass them to `run_survey_report()` with `scale_labels`, e.g. `scale_labels = list(Q5 = c("1" = "Very poor", "5" = "Excellent"))`.
+* **Main travel mode:** a trip's survey is attached to one of its legs. Trip questions are compared by the trip's main mode, the mode of its longest leg (`trip_mode` in `rDaynamica::link_survey_to_items()`).
+* **Item IDs:** calendar item IDs are occasionally reused for a later item. Surveys are linked to the item whose start time is closest to the start time recorded with the survey.
+* **Reproducing these results:** expand the "Code" buttons to see the `rDaynamica` functions behind each table and figure.

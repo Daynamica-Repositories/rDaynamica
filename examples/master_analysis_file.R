@@ -145,3 +145,22 @@ run_activity_chains_report(
   output_dir = "outputs/Module_4",
   file_name = "Activity_Chains_Module_Example"
 )
+
+
+############################################################
+### Module 5: Survey Responses                           ###
+############################################################
+
+# Optional: what the ends of each rating scale mean, which the data doesn't
+# record. These labels are placeholders; use the wording from your study's survey.
+scale_labels <- list(
+  Q5 = c("1" = "Very poor", "5" = "Excellent"),
+  Q15 = c("1" = "Very poor", "5" = "Excellent")
+)
+
+run_survey_report(
+  daynamica_data = csv_dict_sub,
+  output_dir = "outputs/survey_analysis",
+  file_name = "survey_analysis_result",
+  scale_labels = scale_labels
+)
