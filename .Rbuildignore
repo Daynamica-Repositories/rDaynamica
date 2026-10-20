@@ -1,0 +1,11 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.git$
+^\.gitignore$
+^README\.html$
+^analysis_modules$
+^data$
+^examples$
+^helper_functions$
+^landing_page_files$
+^outputs$

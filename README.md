@@ -1,143 +1,98 @@
-# Overview
+# rDaynamica: Standard Analysis Tools for Daynamica Smartphone App Data
 
-An R repository for code related to standard analysis tools. Helps with summary statistics, standard tables, and common data visualization techniques.
+An R package designed to process, analyze, and visualize data collected from the Daynamica smartphone application. The package provides researcher-facing, user-friendly functions and automated report generation modules.
 
-This code repository contains a collection of functions to aid in the processing and analysis of Daynamica data. Alongside the analysis tools, an example dataset is also provided. These tools were developed to provide a wide range of functionality for manipulating Daynamica data while also making it as user-friendly as possible. 
-
-For those who are experienced with using R, we strongly encourage you to dive into the code and see how you might customize the different functions to meet your exact needs. 
-
-It is our hope to continually improve this code repo and add new modules to expand the list of options for analyzing Daynamica data. If you have a common set of analyses that you perform that isn't addressed in our repo, please let us know. We want to develop a thriving community of Dayanamica data users who can share and improve each others analysis. 
-
-# Learn more about Daynamica
-
-If you are interested in learning more about Daynamica and its history, we recommend reading this chapter from an upcoming book about Daynamica.
-
-
-<a href="landing_page_files/Chapter 3. Digital Day Reconstruction 5.12.2024.pdf" target="_blank">Daynamica Book Chapter.</a>
+---
 
 ## Getting Started
 
-This section will focus on getting you started with the code repository. It will outline the overall structure of the repo as well as where to begin when analyzing Daynamica data. 
+### Installation
 
-### Downloading the Code Repo
+You can install `rDaynamica` directly in R using `devtools` or `remotes`:
 
-Downloading the repo is extremely straightforward. The repo may be downloaded by going to the "<> Code" button in green, and selecting the "Download ZIP" option. This will download a complete zip file of the repo which can be extracted and immediately used for data analysis. 
+```r
+# install.packages("pak")
+pak::pak("Daynamica/rDaynamica")
+```
 
-### Repository Organization
+Or load the functions locally during research development:
 
-Within the code repository, there are a handful of key folders and files that we want to discuss. 
+```r
+library(rDaynamica)
+```
 
-1. **master_analysis_file.R**: This file is the primary location of the analysis code. The code repository is structured with the master analysis file being the central element which calls upon different collections of code as needed. It contains documentation within itself on how to conduct different types of analyses. As new analysis modules are added to the repository, corresponding sections will be added to this document as well. This should be the first place to go whenever starting a new Daynamica data analysis. 
+---
 
-2. **data/**: This is where the Daynamica data is stored. Within this folder, analysts have freedom to organize files as they see fit though it is recommended too keep files from different studies within their own sub-directories. Within the master analysis file, the analyst specifies the location of the datasets.
+## Quickstart Example
 
-3. **helper_functions/**: This is where the daynamica analysis code is stored. These code files can be universal to all daynamica analyses like data cleaning operations, or specific to different analysis modules. When performing standard analyses, this folder does not need to be modified. If the analyst wishes to customize the analysis from the default options, this folder is a good place to start.
+Running a full Daynamica data analysis pipeline is straightforward. See `examples/master_analysis_file.R` for a complete script.
 
-4. **analysis_modules/**: For some analysis modules, the module's final output is a report. In these cases, the .RMD file which constructs the report is stored in this folder. For other modules which do not contain a report and are only a collection of functions, their code will be stored in **helper_functions/**.
+```r
+library(rDaynamica)
 
-5. **outputs/**: This is where the module outputs are stored. The specific location within this folder is specified within the master analysis file. Similar but different analyses may be created and stored within the different sub-directories within the outputs folder. For example, within outputs/, we can include a "Over 50 Y.O." and "50 and Under Y.O." analysis folders to allow us to perform age stratified analyses for quick comparison of sub-populations. 
+# 1. Import Daynamica datasets from CSV directory (sample data ships with the package)
+data_path <- system.file("extdata", "anonymized_data", package = "rDaynamica")
+csv_dict <- path2dict(folder_path = data_path, file_prefix = "anonymized_")
 
+# 2. Preprocess & Clean Data
+csv_dict <- ucal_items_version_updater(csv_dict)
+csv_dict$ucalitems$cal_item_id <- as.integer(csv_dict$ucalitems$cal_item_id)
+csv_dict[['ucalitems']] <- assign_trip_purpose(csv_dict[['ucalitems']])
 
+# Join calendar item survey responses
+csv_dict[['ucalitems_survey']] <- survey_join_id(csv_dict[['calendar_item_survey']], csv_dict[['ucalitems']])
+csv_dict[['ucalitems_ljoin_ucisurvey']] <- ucalitems_ljoin_ucisurvey(csv_dict[['ucalitems_survey']], csv_dict[['ucalitems']])
 
-### Running the code
+# 3. Split multiday items & filter valid days (>= 12 hours)
+csv_dict[['ucalitems_ljoin_ucisurvey_split']] <- split_ucalitems(
+  csv_dict[['ucalitems_ljoin_ucisurvey']],
+  local_timezone = 'US/Central',
+  day_start_hour = 0
+)
+csv_dict[['day_summary']] <- get_per_day_duration(csv_dict[['ucalitems_ljoin_ucisurvey_split']])
+csv_dict_sub <- filter_valid_days(csv_dict, query_text = "(interact_with_app>0)&(with_subtype>=12)")
 
-Once the code repository has been downloaded, you may begin analysis immediately. For convenience, an anonymized dataset has been included by default in the code repo. This data exists in the data folder under *anonymized_data*.
+# 4. Group subtypes into a few categories (required for the chord diagram)
+recat <- c(
+  "CAR - DRIVER" = "MOTORIZED TRIP", "CAR - PASSENGER" = "MOTORIZED TRIP",
+  "OTHER TRIPS" = "MOTORIZED TRIP", "RAIL" = "MOTORIZED TRIP", "BUS" = "MOTORIZED TRIP",
+  "TAXI/UBER/LYFT" = "MOTORIZED TRIP", "VEHICLE" = "MOTORIZED TRIP",
+  "WAIT" = "NON-MOTORIZED TRIP", "WALK" = "NON-MOTORIZED TRIP", "BIKE" = "NON-MOTORIZED TRIP",
+  "HOME" = "HOME", "WORKPLACE" = "WORK", "FOOD & MEAL" = "EAT OUT",
+  "SHOPPING ERRANDS" = "SHOP", "UNKNOWN" = "MISSING",
+  "CARE GIVING" = "OTHER", "CIVIL ERRANDS" = "OTHER", "COMMUNITY & CULTURAL" = "OTHER",
+  "EDUCATION" = "OTHER", "FUN & LEISURE" = "OTHER", "MEDICAL & FITNESS" = "OTHER",
+  "OTHER ACTIVITIES" = "OTHER", "RELIGIOUS & SPIRITUAL" = "OTHER"
+)
+csv_dict_new_cat <- recategorize_calendar_items(csv_dict_sub, orig_cats = names(recat), new_cats = unname(recat))
 
-The first step is to open *master_analysis_file.R*. This file automatically defaults to analyzing the anonymized dataset. The full master analysis file may be run from start to finish using this dataset and all modules will be run. Throughout this file there are contextual comments explaining what each step of the analysis is doing. 
+# 5. Run Analysis Modules
+run_standard_analysis(csv_dict_sub, output_dir = "outputs/primary_analysis")
+run_visualization_report(csv_dict_new_cat, output_dir = "outputs/ucal_visualization")
+generate_chord_diagram_gif(csv_dict_new_cat, output_dir = "outputs/plot-gif")
+run_activity_chains_report(csv_dict_sub, output_dir = "outputs/Module_4")
+```
 
+---
 
-### Adding your own dataset
+## Analysis Modules Summary
 
-When ready, you may add your own dataset under a new sub-direcotry within the *data/* directory. From there, you must modify the **Script / Data Import** Section of the master analysis file to tell the code where the new dataset is located. Additional updates should be made to the output location for each module so the results are sent to the proper location. 
+1. **`run_standard_analysis()`**: Generates an HTML report containing dataset summary statistics, active user plots, valid days breakdown, and activity/trip duration tables.
+2. **`run_visualization_report()`**: Produces detailed multi-day participant timeline plots of calendar items.
+3. **`generate_chord_diagram_gif()`**: Constructs animated chord diagram GIFs showcasing transition flow rates between activities/trips over time.
+4. **`run_activity_chains_report()`**: Tutorial and analysis report for extracting activity sequence chains (e.g. `H -> T -> W -> T -> H`) and generating Sankey diagrams.
 
-## Code Organization
+---
 
-The repository is organized such that each module is a stand alone analysis that does not depend on another module. The majority of the relevant code is stored within *helper_functions/*. For code that is applicable across multiple modules (including planned modules), the R scripts are labeled with an *s* prefix (ie *s1_io_data.R* is used to import Daynamica data). Other R scripts are specific to a module and are not expected to be used in other modules. In these case, they are labeled with a *module_#* prefix, indicating that it is module specific along with which module it belongs to. 
+## Package Structure
 
-The code repository is organized to be run through the master analysis file. Prior to any modules being run, a set of standard data processing tasks must be completed, regardless of the module. These tasks are performed at the beginning of *master_analysis_file.R*. Following those functions, each module is clearly indicated within *master_analysis_file.R* and may be run in any order. Some caution should be made when reordering modules as some modules require further data modification which may not work well with other modules. For example, Module 3 works best when the number of distinct activity and trip types is small (eg Trip, Home, Work, Other). The module has code to simplify the trip and activity subtypes. This may not be ideal for Module 1 where we want summary statistics on frequency of each activity and trip subtype.  
+- **`R/`**: Package functions (`io.R`, `preprocess.R`, `validation.R`, `summary.R`, `temporal_plot.R`, `sequence.R`, `chord_diagram.R`, `modules.R`).
+- **`inst/rmd/`**: Standalone RMarkdown analysis module templates.
+- **`inst/extdata/`**: Sample anonymized dataset for testing and quickstart tutorials.
+- **`examples/`**: `master_analysis_file.R` showing example workflow execution.
 
-## Completed Modules
+---
 
-### Module 1: Standard Dayanmica Analysis Report
+## Contribution Statement
 
-This module creates an HTML report with a series of tables and figures that are commonly used to summarize the Daynamica Calendar Items dataset. Examples of results include:
-- General dataset statistics
-- Data collected over time
-- Total data collected
-- User Calendar Item Visualization
-- Activity / Trip count per day
-- Trip Summary Statistics
-- Activity Summary Statistics
-- Primary Trip Mode Statistics
-- Trip Purpose Statistics
-
-The tables have the option to be exported as individual CSV files when generating the final report. Report figure outputs may be extracted by right clicking on the figures and selecting "Save image as".
-
-Click on the report to see the full example report!
-
-<a href="./outputs/primary_analysis/primary_analysis_result.html">
- <img src="./landing_page_files/module1_header.png" width="550" />
-</a>
-
-### Module 2: Robust Daynamica Calendar Item Visualization Report
-
-This module is an extension of the User Calendar Item Visualization section from Module 1. It focuses only on visualizing calendar items with some additional control over the way the results are displayed including the coloring of the calendar item segments. 
-
-The final output is an HTML report. 
-
-
-Click on the report to see the full example report!
-
-<a href="./outputs/ucal_visualization_output/ucal_visualization_example.html">
- <img src="./landing_page_files/module2_header.png" width="550" />
-</a>
-
-
-### Module 3: Chord Diagram Gif Generator
-
-This module produces a collection of plots and a final GIF using a unique visualization format that highlights the movement patterns of the Daynamica data. See the example below of the gif made using the anonymized data provided alongside this code repository. 
-<img src="./outputs/plot-gif/ucal_chord_diagram_visualization_all_data_visualization.gif" width="350" />
-
-### Module 4: Activity Chaining Sequences
-
-This module provides a tutorial on how to generate and visualize Activity Chains. Activity Chains represent a novel way to summarize an entire day's worth of information into a single short character string by removing the element of time, instead focusing on the order of activities. This allows for the development of population level tables and figures in a digestible format. An example output made possible via activity chains is provided below. 
-
-<img src="./landing_page_files/Module 4_example.png" width="550" />
-
-## In Development Modules
-
-### Module 5: Standard Sequence Alignment Daynamica Analysis Report
-
-More to come on this soon!
-
-### Module 6: Survey Analysis Tools
-
-More to come on this soon!
-
-# Disclaimer:
-
-Daynamica data can be quite complex and there are a large number of moving parts when compiling a complete analysis. We have done our best to generate a standard workflow which will work with any standardized Daynamica dataset and fit the vast majority of use cases. That being said, we recognize that our repository is not foolproof and might not work for you. If that is the case, please let us know so we can continue to improve our codebase. 
-
-## Package Version
-
-Here is a screenshot of the R Environment and the version of common packages used in this code repo. 
-
-<img src="./landing_page_files/session_info.png" width="550" />
-
-# R Package:
-
-In the future, we may convert this repo into an R package. This will make the distribution and sharing of the code base significantly easier and allow us to include better documentation. At this time, we are still working on developing the functionality of our repository but when appropriate, we may transition this repository into a stand alone R package. 
-
-# Contribution Statement
-
-Andrew Becker and Yaxuan Zhang developed this publicly available R code repository under the supervision of Yingling Fan and Ying Song using funding from the Humphrey School of Public Affairs at the University of Minnesota. 
-
-
-**Module 1** was based on a Python prototype developed by Xiaohuan Zeng, Ying Song, and Yingling Fan to facilitate data analysis for the project *Centering the Margins: The Transportation Experience of Underserved Communities* ([Fan, et al., 2023](https://conservancy.umn.edu/handle/11299/257263)).
-
-**Modules 2 and 3** were developed by Andrew Becker and Yingling Fan based on previous work from multiple Daynamica based research studies including:
-
-1. *Smartphone-Based Interventions for Sustainable Travel Behavior: The University of Minnesota Parking Contract Holder Study* ([Fan, et al., 2020](https://conservancy.umn.edu/handle/11299/218025)); and
-
-2. *COVID-19 Implications on Public Transportation: Understanding Post-Pandemic Transportation Needs, Behaviors, and Experiences* ([Fan, et al. 2022](https://conservancy.umn.edu/handle/11299/250147)).
-
+Developed by Andrew Becker, Yaxuan Zhang, Yingling Fan, and Ying Song at the University of Minnesota.

@@ -1,0 +1,4 @@
+# Export all functions matching pattern
+exportPattern("^[[:alpha:]]+")
+importFrom(dplyr, "%>%")
+importFrom(data.table, ":=", ".I", ".N", ".SD")

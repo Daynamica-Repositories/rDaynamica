@@ -1,8 +1,8 @@
 "Statistics","Median","Mean","SD","Min","Max"
-"Recorded Data per Day (Minutes)",1440,1440,NA,1440,1440
-"Total Activity Duration per Day (Minutes)",1421,1421,NA,1421,1421
-"Total Trip Duration per Day (Minutes)",19,19,NA,19,19
-"Total Trip Distance per Day (Miles)",5.92609896668419,5.92609896668419,NA,5.92609896668419,5.92609896668419
-"Activity Count per Day",3,3,NA,3,3
-"Trip (Segment) Count per Day",2,2,NA,2,2
-"Trip (Complete) Count per Day",2,2,NA,2,2
+"Recorded Data per Day (Minutes)",1440,1367.70731707317,306.932872682801,720,5760
+"Total Activity Duration per Day (Minutes)",1440,1297.56910569106,332.196022700114,0,5760
+"Total Trip Duration per Day (Minutes)",0,70.1382113821138,136.742863212623,0,1440
+"Total Trip Distance per Day (Miles)",0,5.08941710295563,22.8860431524909,0,355.206507835069
+"Activity Count per Day",5,5.81341463414634,3.70170611079228,0,26
+"Trip (Segment) Count per Day",3,4.13048780487805,4.14732327652987,0,32
+"Trip (Complete) Count per Day",3,3.78170731707317,3.6394134712674,0,22
