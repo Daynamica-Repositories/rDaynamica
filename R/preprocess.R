@@ -145,11 +145,13 @@ split_ucalitems <- function(ucalitems_ljoin_ucisurvey,
     duration_before_split = as.numeric(difftime(end_dt, start_dt, units = "hours"))
   )]
 
-  split_days <- data.table::rbindlist(lapply(split(ucalitems_ljoin_ucisurvey, by = 'id'), function(episode) {
-    start_date_seq <- seq.Date(episode$start_date, episode$end_date, by = 'days')
-    id <- rep(episode$id, episode$days)
-    data.table::data.table(start_date = start_date_seq, id = id)
-  }))
+  # Vectorized creation of split_days table without splitting row-by-row with split/lapply/rbindlist.
+  # sequence(days) generates 1..days offsets per row, minus 1 giving day sequence offsets [0, 1, ..., days-1].
+  day_offsets <- sequence(ucalitems_ljoin_ucisurvey$days) - 1L
+  split_days <- data.table::data.table(
+    start_date = rep(ucalitems_ljoin_ucisurvey$start_date, ucalitems_ljoin_ucisurvey$days) + day_offsets,
+    id = rep(ucalitems_ljoin_ucisurvey$id, ucalitems_ljoin_ucisurvey$days)
+  )
 
   split_days <- split_days[order(id, start_date)]
 
