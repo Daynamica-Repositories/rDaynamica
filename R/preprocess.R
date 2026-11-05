@@ -145,11 +145,13 @@ split_ucalitems <- function(ucalitems_ljoin_ucisurvey,
     duration_before_split = as.numeric(difftime(end_dt, start_dt, units = "hours"))
   )]
 
-  split_days <- data.table::rbindlist(lapply(split(ucalitems_ljoin_ucisurvey, by = 'id'), function(episode) {
-    start_date_seq <- seq.Date(episode$start_date, episode$end_date, by = 'days')
-    id <- rep(episode$id, episode$days)
-    data.table::data.table(start_date = start_date_seq, id = id)
-  }))
+  # Vectorized creation of split_days table without splitting row-by-row with split/lapply/rbindlist.
+  # sequence(days) generates 1..days offsets per row, minus 1 giving day sequence offsets [0, 1, ..., days-1].
+  day_offsets <- sequence(ucalitems_ljoin_ucisurvey$days) - 1L
+  split_days <- data.table::data.table(
+    start_date = rep(ucalitems_ljoin_ucisurvey$start_date, ucalitems_ljoin_ucisurvey$days) + day_offsets,
+    id = rep(ucalitems_ljoin_ucisurvey$id, ucalitems_ljoin_ucisurvey$days)
+  )
 
   split_days <- split_days[order(id, start_date)]
 
@@ -292,14 +294,17 @@ rename_userids <- function(csv_dict, seed = NULL) {
 
   id_dict <- data.frame(orig_id = unique_list_of_ids, new_id = new_ids, stringsAsFactors = FALSE)
 
+  # Bolt optimization: Use O(N) named vector lookup instead of O(U * N) repeated gsub calls.
+  # This avoids repeated string pattern matching loops across every table row for every user ID.
+  id_map <- stats::setNames(id_dict$new_id, id_dict$orig_id)
+
   for (item in seq_along(csv_dict)) {
     temp_data <- csv_dict[[item]]
     if (!("user_id" %in% names(temp_data))) {
       next
     }
-    for (i in seq_len(nrow(id_dict))) {
-      temp_data$user_id <- gsub(id_dict$orig_id[i], id_dict$new_id[i], temp_data$user_id)
-    }
+    mapped_ids <- id_map[as.character(temp_data$user_id)]
+    temp_data$user_id <- ifelse(is.na(mapped_ids), temp_data$user_id, mapped_ids)
     csv_dict[[item]] <- temp_data
   }
   csv_dict[["id_dictionary"]] <- id_dict
